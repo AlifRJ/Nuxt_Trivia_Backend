@@ -17,10 +17,11 @@ var (
 
 type UserService struct {
 	repo model.UserRepository
+	authRepo model.AuthRepository
 }
 
-func NewUserService(repo model.UserRepository) *UserService {
-	return &UserService{repo: repo}
+func NewUserService(repo model.UserRepository, authRepo model.AuthRepository) *UserService {
+	return &UserService{repo: repo, authRepo: authRepo}
 }
 
 func (s *UserService) GetAll(ctx context.Context, limit, offset int) ([]*model.User, error) {
@@ -79,47 +80,46 @@ func (s *UserService) RegisterUser(ctx context.Context, name, username, email, p
 }
 
 func (s *UserService) UpdateUser(ctx context.Context, id uint, name, username, email, password string) (*model.User, error) {
-	user, err := s.repo.GetByID(ctx, id)
+	// Fetch existing user record
+	existingUser, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 
-	if name != "" {
-		user.Name = name
-	}
-	if username != "" && username != user.Username {
-		if existing, _ := s.repo.GetByUsername(ctx, username); existing != nil {
-			return nil, ErrUsernameTaken
-		}
-		user.Username = username
-	}
-	if email != "" && email != user.Email {
-		if existing, _ := s.repo.GetByEmail(ctx, email); existing != nil {
-			return nil, ErrEmailTaken
-		}
-		user.Email = email
-	}
-    if password != "" {
-		if len(password) < 6 {
-			return nil, ErrPasswordTooShort
-		}
+	passwordChanged := false
 
+	// Hash password if provided and non-empty
+	if password != "" {
 		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 		if err != nil {
 			return nil, err
 		}
-        user.Password = string(hashedPassword) 
-    } else {
-		existingWithPass, err := s.repo.GetByEmailOrUsername(ctx, user.Email)
-		if err == nil && existingWithPass != nil {
-			user.Password = existingWithPass.Password
-		}
+		existingUser.Password = string(hashedPassword)
+		passwordChanged = true
 	}
 
-	if err := s.repo.Update(ctx, user); err != nil {
+	if name != "" {
+		existingUser.Name = name
+	}
+	if username != "" {
+		existingUser.Username = username
+	}
+	if email != "" {
+		existingUser.Email = email
+	}
+
+	// Persist updated user
+	if err := s.repo.Update(ctx, existingUser); err != nil {
 		return nil, err
 	}
-	return user, nil
+
+	// Security: If password was changed, revoke active refresh tokens across all devices
+	if passwordChanged && s.authRepo != nil {
+		_ = s.authRepo.DeleteRefreshToken(ctx, id)
+	}
+
+	existingUser.Password = "" // Strip hash before returning
+	return existingUser, nil
 }
 
 func (s *UserService) DeleteUser(ctx context.Context, id uint) error {

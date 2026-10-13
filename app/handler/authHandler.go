@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/AlifRJ/Go_Auth/app/middleware"
@@ -283,26 +284,40 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 // --- Helper Functions ---
 
 func setRefreshTokenCookie(w http.ResponseWriter, token string, duration time.Duration) {
+	isProduction := os.Getenv("APP_ENV") == "production"
+
+	sameSite := http.SameSiteLaxMode
+	if isProduction {
+		sameSite = http.SameSiteNoneMode
+	}
+	
 	http.SetCookie(w, &http.Cookie{
 		Name:     "refresh_token",
 		Value:    token,
 		Path:     "/v1",
 		Expires:  time.Now().Add(duration),
 		HttpOnly: true,
-		Secure:   false,	// Set true in Production
-		SameSite: http.SameSiteLaxMode,	// Set http.SameSiteNoneMode in Production
+		Secure:   isProduction,
+		SameSite: sameSite,
 	})
 }
 
 func clearRefreshTokenCookie(w http.ResponseWriter) {
+	isProduction := os.Getenv("APP_ENV") == "production"
+
+	sameSite := http.SameSiteLaxMode
+	if isProduction {
+		sameSite = http.SameSiteNoneMode
+	}
+
 	http.SetCookie(w, &http.Cookie{
 		Name:     "refresh_token",
 		Value:    "",
 		Path:     "/v1",
 		Expires:  time.Unix(0, 0),
 		HttpOnly: true,
-		Secure:   false,	// Set true in Production
-		SameSite: http.SameSiteLaxMode,	// Set http.SameSiteNoneMode in Production
+		Secure:   isProduction,
+		SameSite: sameSite,
 	})
 }
 

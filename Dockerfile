@@ -7,13 +7,24 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o main .
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o main .
 
 # Final Stage (Minimal Image)
 FROM alpine:latest
 
-WORKDIR /root/
+# Install CA certificates for outgoing TLS/HTTPS connections
+RUN apk --no-cache add ca-certificates tzdata
+
+# Create a non-root user for security
+RUN adduser -D -g '' appuser
+
+WORKDIR /app
+
+# Copy binary from builder
 COPY --from=builder /app/main .
+
+# Switch to non-root user
+USER appuser
 
 EXPOSE 8080
 CMD ["./main"]

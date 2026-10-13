@@ -100,7 +100,7 @@ func (r *cachedAuthRepository) IsTokenBlacklisted(ctx context.Context, jti strin
 	key := r.blacklistKey(jti)
 	exists, err := r.rdb.Exists(ctx, key).Result()
 	if err != nil {
-		return false, fmt.Errorf("failed to check token blacklist status: %w", err)
+		return false, fmt.Errorf("redis error on blacklist lookup: %w", err)
 	}
 	return exists > 0, nil
 }

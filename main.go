@@ -12,22 +12,14 @@ import (
 	"time"
 
 	"github.com/AlifRJ/Go_Auth/app/handler"
-	cmiddleware "github.com/AlifRJ/Go_Auth/app/middleware"
 	"github.com/AlifRJ/Go_Auth/app/migration"
 	"github.com/AlifRJ/Go_Auth/app/repository"
 	"github.com/AlifRJ/Go_Auth/app/service"
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
-	"github.com/go-chi/cors"
-	"github.com/go-chi/httprate"
 	"github.com/go-chi/jwtauth/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
-	"github.com/redis/go-redis/v9"
 )
 
 func main() {
-	// Load environment variables
 	if err := godotenv.Load(); err != nil {
 		log.Println("Info: No .env file found, relying on system env")
 	}
@@ -35,58 +27,17 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Connection Pool Setup
-	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
-		os.Getenv("DB_USER"),
-		os.Getenv("DB_PASSWORD"),
-		os.Getenv("DB_HOST"),
-		os.Getenv("DB_PORT"),
-		os.Getenv("DB_DATABASE"),
-	)
-
-	config, err := pgxpool.ParseConfig(dsn)
-	if err != nil {
-		log.Fatalf("Error parsing database DSN: %v\n", err)
-	}
-
-	// Set pool limits
-	config.MaxConns = 25
-	config.MinConns = 5
-	config.MaxConnLifetime = 30 * time.Minute
-	
-	db, err := pgxpool.NewWithConfig(ctx, config)
-	if err != nil {
-		log.Fatalf("Error creating database pool: %v\n", err)
-	}
+	// Databases setup (from config.go)
+	db := initPostgres(ctx)
 	defer db.Close()
 
-	// Database Conn Check
-	if err := db.Ping(ctx); err != nil {
-		log.Fatalf("Cannot connect to database: %v\n", err)
-	}
-	fmt.Println("Successfully connected to PostgreSQL!")
-
-	// Migrate users table
-	if err := migration.UserMigration(ctx, db); err != nil{
-		log.Fatalf("Failed to create table: %v\n", err)
-	}
-
-	// Open Cache database connection
-	redisHost := os.Getenv("REDIS_HOST")
-	redisPort := os.Getenv("REDIS_PORT")
-	rdb := redis.NewClient(&redis.Options{
-		Addr:		fmt.Sprintf("%s:%s", redisHost, redisPort),
-		Password: 	os.Getenv("REDIS_PASSWORD"),
-		DB:			0,
-	})
+	rdb := initRedis(ctx)
 	defer rdb.Close()
 
-	// Redis Conn Check
-	if err := rdb.Ping(ctx).Err(); err != nil {
-		log.Fatalf("Cannot connect to Redis: %v\n", err)
+	// Run migrations
+	if err := migration.UserMigration(ctx, db); err != nil {
+		log.Fatalf("Failed to execute user migration: %v\n", err)
 	}
-	fmt.Println("Successfully connected to Redis!")
-
 
 	// JWT Setup
 	accessSecret := os.Getenv("ACCESS_SECRET_KEY")
@@ -96,62 +47,42 @@ func main() {
 	}
 	accessTokenAuth := jwtauth.New("HS256", []byte(accessSecret), nil)
 	refreshTokenAuth := jwtauth.New("HS256", []byte(refreshSecret), nil)
-	
+
 	// Dependency Injection
 	userRepo := repository.NewPostgresUserRepository(db)
+	scoreRepo := repository.NewPostgresScoreRepository(db)
 	authRepo := repository.NewPostgresAuthRepository(db)
 
 	cachedUserRepo := repository.NewCachedUserRepository(rdb, userRepo, 15*time.Minute)
+	cachedScoreRepo := repository.NewCachedScoreRepository(rdb, scoreRepo, 15*time.Minute)
 	cachedAuthRepo := repository.NewCachedAuthRepository(rdb, authRepo)
-	
-	userService := service.NewUserService(cachedUserRepo)
+
+	userService := service.NewUserService(cachedUserRepo, cachedAuthRepo)
+	leaderboardService := service.NewLeaderboardService(rdb)
+	scoreService := service.NewScoreService(cachedScoreRepo, leaderboardService)
 	authService := service.NewAuthService(cachedUserRepo, cachedAuthRepo, accessTokenAuth, refreshTokenAuth)
-	
+
 	userHandler := handler.NewUserHandler(userService, cachedAuthRepo, accessTokenAuth)
+	scoreHandler := handler.NewScoreHandler(scoreService, cachedAuthRepo, accessTokenAuth)
+	leaderboardHandler := handler.NewLeaderboardHandler(leaderboardService, authRepo, accessTokenAuth)
 	authHandler := handler.NewAuthHandler(authService, userService, accessTokenAuth, refreshTokenAuth)
-	
-	// Chi Router & Middlewares
-	r := chi.NewRouter()
 
-	// Middleware
-	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{os.Getenv("ALLOWED_ORIGIN")},
-		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
-		ExposedHeaders:   []string{"Link"},
-		AllowCredentials: true,
-		MaxAge:           300,
-  	}))
-
-	r.Use(middleware.RequestID)
-	r.Use(cmiddleware.RealIP)
-	r.Use(middleware.Logger)
-	r.Use(middleware.Recoverer)
-
-	// Limit index to 5 request per second per ip address
-	r.Use(httprate.LimitBy(5, time.Second, func(r *http.Request)(string, error){
-		return httprate.CanonicalizeIP(r.RemoteAddr), nil
-	}))
-
-	// Health Check Route
-	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(200)
-    	w.Write([]byte("OK"))
-	})
-
-	// Routes Registry
-	authHandler.RegisterRoutes(r)
-	userHandler.RegisterRoutes(r)
-
+	// Router setup (from router.go)
+	router := setupRouter(authHandler, userHandler, scoreHandler, leaderboardHandler)
 
 	port := os.Getenv("APP_PORT")
+	if port == "" {
+		port = "8080"
+	}
+
 	srv := &http.Server{
 		Addr:         ":" + port,
-		Handler:      r,
+		Handler:      router,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
+
 	go func() {
 		fmt.Printf("Server starting on port: %s\n", port)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -159,7 +90,6 @@ func main() {
 		}
 	}()
 
-	// Listen for shutdown signal (CTRL+C / SIGTERM)
 	<-ctx.Done()
 	fmt.Println("\nShutting down server gracefully...")
 
@@ -169,10 +99,6 @@ func main() {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Fatalf("Server forced to shutdown: %v\n", err)
 	}
-
-	fmt.Println("Closing database and cache connections...")
-	db.Close()
-	rdb.Close()
 
 	fmt.Println("Server stopped cleanly.")
 }
