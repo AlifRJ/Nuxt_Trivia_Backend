@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/AlifRJ/Go_Auth/app/middleware"
+	"github.com/AlifRJ/Go_Auth/app/model"
 	"github.com/AlifRJ/Go_Auth/app/service"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/httprate"
@@ -17,14 +18,16 @@ import (
 type AuthHandler struct {
 	service 			*service.AuthService
 	userService        	*service.UserService
+	authRepo        	model.AuthRepository
 	accessTokenAuth 	*jwtauth.JWTAuth
 	refreshTokenAuth 	*jwtauth.JWTAuth
 }
 
-func NewAuthHandler(s *service.AuthService, userService *service.UserService, accessAuth *jwtauth.JWTAuth, refreshAuth *jwtauth.JWTAuth) *AuthHandler {
+func NewAuthHandler(s *service.AuthService, userService *service.UserService, authRepo model.AuthRepository, accessAuth *jwtauth.JWTAuth, refreshAuth *jwtauth.JWTAuth) *AuthHandler {
 	return &AuthHandler{
 		service: 			s, 
 		userService: 		userService, 
+		authRepo:        	authRepo,
 		accessTokenAuth: 	accessAuth,
 		refreshTokenAuth: 	refreshAuth,
 	}
@@ -52,6 +55,7 @@ func (h *AuthHandler) RegisterRoutes(r chi.Router) {
 		r.Group(func(r chi.Router){
 			r.Use(jwtauth.Verifier(h.accessTokenAuth))
 			r.Use(jwtauth.Authenticator(h.accessTokenAuth))
+			r.Use(middleware.CheckTokenBlacklist(h.authRepo))
 			
 			// JTI Rate limit
 			r.Use(httprate.LimitBy(5, time.Minute, func(r *http.Request) (string, error) {
@@ -105,6 +109,7 @@ func (h *AuthHandler) RegisterRoutes(r chi.Router) {
 		r.Group(func(r chi.Router){
 			r.Use(jwtauth.Verifier(h.accessTokenAuth))
 			r.Use(jwtauth.Authenticator(h.accessTokenAuth))
+			r.Use(middleware.CheckTokenBlacklist(h.authRepo))
 			
 			// JTI Rate limit
 			r.Use(httprate.LimitBy(60, time.Minute, func(r *http.Request) (string, error) {

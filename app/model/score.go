@@ -18,6 +18,7 @@ type Score struct {
 type ScoreRepository interface{
 	GetAll(ctx context.Context, limit, offset int) ([]*Score, error)
 	GetByUser(ctx context.Context, userID uint) ([]*Score, error)
+	GetByID(ctx context.Context, id uint) (*Score, error)
 	Create(ctx context.Context, score *Score) error
 	Delete(ctx context.Context, id uint) error
 	PermanentDelete(ctx context.Context, id uint) error

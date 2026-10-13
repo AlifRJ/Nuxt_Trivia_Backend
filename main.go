@@ -38,6 +38,12 @@ func main() {
 	if err := migration.UserMigration(ctx, db); err != nil {
 		log.Fatalf("Failed to execute user migration: %v\n", err)
 	}
+	if err := migration.AuthMigration(ctx, db); err != nil {
+		log.Fatalf("Failed to execute user migration: %v\n", err)
+	}
+	if err := migration.ScoreMigration(ctx, db); err != nil {
+		log.Fatalf("Failed to execute score migration: %v\n", err)
+	}
 
 	// JWT Setup
 	accessSecret := os.Getenv("ACCESS_SECRET_KEY")
@@ -64,8 +70,8 @@ func main() {
 
 	userHandler := handler.NewUserHandler(userService, cachedAuthRepo, accessTokenAuth)
 	scoreHandler := handler.NewScoreHandler(scoreService, cachedAuthRepo, accessTokenAuth)
-	leaderboardHandler := handler.NewLeaderboardHandler(leaderboardService, authRepo, accessTokenAuth)
-	authHandler := handler.NewAuthHandler(authService, userService, accessTokenAuth, refreshTokenAuth)
+	leaderboardHandler := handler.NewLeaderboardHandler(leaderboardService, cachedAuthRepo, accessTokenAuth)
+	authHandler := handler.NewAuthHandler(authService, userService, cachedAuthRepo, accessTokenAuth, refreshTokenAuth)
 
 	// Router setup (from router.go)
 	router := setupRouter(authHandler, userHandler, scoreHandler, leaderboardHandler)

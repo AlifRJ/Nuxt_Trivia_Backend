@@ -22,9 +22,9 @@ type ScoreHandler struct {
 	accessTokenAuth *jwtauth.JWTAuth
 }
 
-func NewScoreHandler(s *service.ScoreService, authRepo model.AuthRepository, accessTokenAuth *jwtauth.JWTAuth) *ScoreHandler {
+func NewScoreHandler(scoreService *service.ScoreService, authRepo model.AuthRepository, accessTokenAuth *jwtauth.JWTAuth) *ScoreHandler {
 	return &ScoreHandler{
-		service:         s,
+		service:         scoreService,
 		authRepo:        authRepo,
 		accessTokenAuth: accessTokenAuth,
 	}
@@ -36,18 +36,6 @@ func (h *ScoreHandler) RegisterRoutes(r chi.Router) {
 		r.Use(jwtauth.Verifier(h.accessTokenAuth))
 		r.Use(jwtauth.Authenticator(h.accessTokenAuth))
 		r.Use(middleware.CheckTokenBlacklist(h.authRepo))
-
-		// Helper Fetch claim from JWT
-		// getUserIDKey := func(r *http.Request) (string, error) {
-		// 	_, claims, err := jwtauth.FromContext(r.Context())
-		// 	if err != nil {
-		// 		return httprate.CanonicalizeIP(r.RemoteAddr), nil
-		// 	}
-		// 	if userID, ok := claims["user_id"].(string); ok && userID != "" {
-		// 		return userID, nil
-		// 	}
-		// 	return httprate.CanonicalizeIP(r.RemoteAddr), nil
-		// }
 
 		// Read Group (60 requests/minute)
 		r.Group(func(r chi.Router) {
@@ -109,8 +97,22 @@ func (h *ScoreHandler) GetByUser(w http.ResponseWriter, r *http.Request) {
 
 // Create registers a new score record
 func (h *ScoreHandler) Create(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+
+	// 1. Extract authenticated User ID directly from JWT claims
+	_, claims, err := jwtauth.FromContext(r.Context())
+	if err != nil {
+		respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "Unauthorized context token"})
+		return
+	}
+
+	userID, err := ExtractUserIDFromClaims(claims)
+	if err != nil {
+		respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "Invalid or missing user identity in token"})
+		return
+	}
+
 	var body struct {
-		UserID     uint   `json:"user_id"`
 		Score      uint   `json:"score"`
 		Category   string `json:"category"`
 		Difficulty string `json:"difficulty"`
@@ -121,7 +123,8 @@ func (h *ScoreHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	score, err := h.service.RegisterScore(r.Context(), body.UserID, body.Score, body.Category, body.Difficulty)
+	// 3. Register score via service layer
+	score, err := h.service.RegisterScore(r.Context(), userID, body.Score, body.Category, body.Difficulty)
 	if err != nil {
 		if errors.Is(err, service.ErrInvalidInput) {
 			respondJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})

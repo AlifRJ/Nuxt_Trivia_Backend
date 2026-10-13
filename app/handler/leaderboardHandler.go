@@ -34,17 +34,6 @@ func (h *LeaderboardHandler) RegisterRoutes(r chi.Router) {
 		r.Use(jwtauth.Authenticator(h.accessTokenAuth))
 		r.Use(middleware.CheckTokenBlacklist(h.authRepo))
 
-		// getUserIDKey := func(r *http.Request) (string, error) {
-		// 	_, claims, err := jwtauth.FromContext(r.Context())
-		// 	if err != nil {
-		// 		return httprate.CanonicalizeIP(r.RemoteAddr), nil
-		// 	}
-		// 	if userID, ok := claims["user_id"].(string); ok && userID != "" {
-		// 		return userID, nil
-		// 	}
-		// 	return httprate.CanonicalizeIP(r.RemoteAddr), nil
-		// }
-
 		// Read Operations (60 requests/minute)
 		r.Group(func(r chi.Router) {
 			r.Use(httprate.LimitBy(60, time.Minute, GetUserIDRateKey, httprate.WithLimitHandler(middleware.WriteRateLimitError)))

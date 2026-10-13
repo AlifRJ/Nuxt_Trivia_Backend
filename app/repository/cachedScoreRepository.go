@@ -97,6 +97,32 @@ func (c *cachedScoreRepository) GetByUser(ctx context.Context, userID uint) ([]*
 	return scores, nil
 }
 
+func (c *cachedScoreRepository) GetByID(ctx context.Context, userID uint) (*model.Score, error) {
+	key := c.userScoresKey(userID)
+
+	// Fetch From Redis
+	val, err := c.rdb.Get(ctx, key).Result()
+	if err == nil {
+		var score model.Score
+		if err := json.Unmarshal([]byte(val), &score); err == nil {
+			return &score, nil // Cache Hit
+		}
+	}
+
+	// Cache Miss: Fetch From Database
+	score, err := c.dbRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Save to Redis
+	if data, err := json.Marshal(score); err == nil {
+		_ = c.rdb.Set(ctx, key, data, c.cacheTTL).Err()
+	}
+
+	return score, nil
+}
+
 func (c *cachedScoreRepository) Create(ctx context.Context, score *model.Score) error {
 	if err := c.dbRepo.Create(ctx, score); err != nil {
 		return err

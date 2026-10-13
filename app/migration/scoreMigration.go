@@ -10,7 +10,7 @@ import (
 func ScoreMigration(ctx context.Context, db *pgxpool.Pool) error {
 	query := `
 	-- 1. Scores Table
-	CREATE TABLE IF NOT EXISTS scoreboard (
+	CREATE TABLE IF NOT EXISTS scores (
 		id SERIAL PRIMARY KEY,
 		user_id INT NOT NULL REFERENCES users(id) on DELETE CASCADE,
 		score INT NOT NULL DEFAULT 0,

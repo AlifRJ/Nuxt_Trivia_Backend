@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/AlifRJ/Go_Auth/app/model"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -49,6 +50,22 @@ func (r *PostgresScoreRepository) GetAll(ctx context.Context, limit, offset int)
 	}
 
 	return scores, nil
+}
+
+func (r *PostgresScoreRepository) GetByID(ctx context.Context, id uint) (*model.Score, error) {
+	query := `SELECT id, user_id, score, category, difficulty, created_at, deleted_at FROM scores WHERE deleted_at IS NULL AND id = $1 ORDER BY created_at DESC`
+
+	
+	var score model.Score
+	err := r.db.QueryRow(ctx, query, id).Scan(&score.ID, &score.UserID, &score.Score, &score.Category, &score.Difficulty, &score.CreatedAt, &score.DeletedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrUserNotFound
+		}
+		return nil, err
+	}
+	
+	return &score, nil
 }
 
 func (r *PostgresScoreRepository) GetByUser(ctx context.Context, userID uint) ([]*model.Score, error) {

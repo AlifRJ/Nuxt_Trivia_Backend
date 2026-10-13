@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"log"
 
 	"github.com/AlifRJ/Go_Auth/app/model"
 )
@@ -66,7 +67,22 @@ func (s *ScoreService) RegisterScore(ctx context.Context, userID, scoreVal uint,
 }
 
 func (s *ScoreService) DeleteScore(ctx context.Context, id uint) error {
-	return s.repo.Delete(ctx, id)
+	scoreModel, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	if err := s.repo.Delete(ctx, id); err != nil {
+		return err
+	}
+
+	if s.leaderboardService != nil && scoreModel != nil {
+		if err := s.leaderboardService.RemoveUser(ctx, scoreModel.Category, scoreModel.UserID); err != nil {
+			log.Printf("[WARN] Failed to remove user %d from leaderboard ZSET: %v", scoreModel.UserID, err)
+		}
+	}
+
+	return nil
 }
 
 func (s *ScoreService) DeleteScorePermanently(ctx context.Context, id uint) error {
