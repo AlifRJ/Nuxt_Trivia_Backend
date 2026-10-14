@@ -51,6 +51,10 @@ func (c *cachedUserRepository) GetByID(ctx context.Context, id uint) (*model.Use
 	return user, nil
 }
 
+func (c *cachedUserRepository) GetMapByIDs(ctx context.Context, ids []uint) (map[uint]string, error){
+	return c.dbRepo.GetMapByIDs(ctx, ids)
+}
+
 func (c *cachedUserRepository) GetByEmailOrUsername(ctx context.Context, identifier string) (*model.User, error) {
 	return c.dbRepo.GetByEmailOrUsername(ctx, identifier)
 }

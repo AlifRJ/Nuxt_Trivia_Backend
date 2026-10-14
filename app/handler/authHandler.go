@@ -290,13 +290,14 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 
 func setRefreshTokenCookie(w http.ResponseWriter, token string, duration time.Duration) {
 	isProduction := os.Getenv("APP_ENV") == "production"
+	cookieDomain := os.Getenv("COOKIE_DOMAIN")
 
 	sameSite := http.SameSiteLaxMode
 	if isProduction {
 		sameSite = http.SameSiteNoneMode
 	}
 	
-	http.SetCookie(w, &http.Cookie{
+	cookie := &http.Cookie{
 		Name:     "refresh_token",
 		Value:    token,
 		Path:     "/v1",
@@ -304,26 +305,40 @@ func setRefreshTokenCookie(w http.ResponseWriter, token string, duration time.Du
 		HttpOnly: true,
 		Secure:   isProduction,
 		SameSite: sameSite,
-	})
+	}
+
+	if cookieDomain != "" {
+		cookie.Domain = cookieDomain
+	}
+
+    http.SetCookie(w, cookie)
 }
 
 func clearRefreshTokenCookie(w http.ResponseWriter) {
 	isProduction := os.Getenv("APP_ENV") == "production"
+	cookieDomain := os.Getenv("COOKIE_DOMAIN")
 
 	sameSite := http.SameSiteLaxMode
 	if isProduction {
 		sameSite = http.SameSiteNoneMode
 	}
 
-	http.SetCookie(w, &http.Cookie{
+	cookie := &http.Cookie{
 		Name:     "refresh_token",
 		Value:    "",
 		Path:     "/v1",
 		Expires:  time.Unix(0, 0),
+		MaxAge:   -1,
 		HttpOnly: true,
 		Secure:   isProduction,
 		SameSite: sameSite,
-	})
+	}
+
+	if cookieDomain != "" {
+		cookie.Domain = cookieDomain
+	}
+
+	http.SetCookie(w, cookie)
 }
 
 func extractUserIDFromClaims(claims map[string]any) (uint, error) {

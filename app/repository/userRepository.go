@@ -62,6 +62,40 @@ func (r *PostgresUserRepository) GetByID(ctx context.Context, id uint) (*model.U
 	return &u, nil
 }
 
+func (r *PostgresUserRepository) GetMapByIDs(ctx context.Context, ids []uint) (map[uint]string, error) {
+	if len(ids) == 0 {
+		return make(map[uint]string), nil
+	}
+
+	query := `
+		SELECT id, username 
+		FROM users 
+		WHERE id = ANY($1) AND deleted_at IS NULL
+	`
+
+	rows, err := r.db.Query(ctx, query, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	userMap := make(map[uint]string, len(ids))
+	for rows.Next() {
+		var id uint
+		var username string
+		if err := rows.Scan(&id, &username); err != nil {
+			return nil, err
+		}
+		userMap[id] = username
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return userMap, nil
+}
+
 func (r *PostgresUserRepository) GetByEmailOrUsername(ctx context.Context, identifier string) (*model.User, error) {
 	query := `
 		SELECT id, name, username, email, password, created_at, updated_at, deleted_at 

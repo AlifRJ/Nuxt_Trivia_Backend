@@ -19,6 +19,7 @@ type User struct {
 type UserRepository interface {
 	GetAll(ctx context.Context, limit, offset int) ([]*User, error)
 	GetByID(ctx context.Context, id uint) (*User, error)
+	GetMapByIDs(ctx context.Context, ids []uint) (map[uint]string, error)
 	GetByEmail(ctx context.Context, email string) (*User, error)
 	GetByUsername(ctx context.Context, username string) (*User, error)
 	GetByEmailOrUsername(ctx context.Context, identifier string) (*User, error)

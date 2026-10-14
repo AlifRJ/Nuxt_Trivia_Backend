@@ -30,10 +30,7 @@ func NewLeaderboardHandler(s *service.LeaderboardService, authRepo model.AuthRep
 // RegisterRoutes registers endpoints for /v1/leaderboards
 func (h *LeaderboardHandler) RegisterRoutes(r chi.Router) {
 	r.Route("/v1/leaderboards", func(r chi.Router) {
-		r.Use(jwtauth.Verifier(h.accessTokenAuth))
-		r.Use(jwtauth.Authenticator(h.accessTokenAuth))
-		r.Use(middleware.CheckTokenBlacklist(h.authRepo))
-
+		
 		// Read Operations (60 requests/minute)
 		r.Group(func(r chi.Router) {
 			r.Use(httprate.LimitBy(60, time.Minute, GetUserIDRateKey, httprate.WithLimitHandler(middleware.WriteRateLimitError)))
@@ -41,6 +38,14 @@ func (h *LeaderboardHandler) RegisterRoutes(r chi.Router) {
 			// GET /v1/leaderboards/{category}?limit=10
 			r.Get("/{category}", h.GetTopScores)
 
+		})
+
+		r.Group(func(r chi.Router){
+			r.Use(jwtauth.Verifier(h.accessTokenAuth))
+			r.Use(jwtauth.Authenticator(h.accessTokenAuth))
+			r.Use(middleware.CheckTokenBlacklist(h.authRepo))
+			r.Use(httprate.LimitBy(60, time.Minute, GetUserIDRateKey, httprate.WithLimitHandler(middleware.WriteRateLimitError)))
+			
 			// GET /v1/leaderboards/{category}/user/{userID}
 			r.Get("/{category}/user/{userID}", h.GetUserRank)
 		})

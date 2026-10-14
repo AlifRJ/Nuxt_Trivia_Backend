@@ -64,7 +64,7 @@ func main() {
 	cachedAuthRepo := repository.NewCachedAuthRepository(rdb, authRepo)
 
 	userService := service.NewUserService(cachedUserRepo, cachedAuthRepo)
-	leaderboardService := service.NewLeaderboardService(rdb)
+	leaderboardService := service.NewLeaderboardService(rdb, cachedUserRepo)
 	scoreService := service.NewScoreService(cachedScoreRepo, leaderboardService)
 	authService := service.NewAuthService(cachedUserRepo, cachedAuthRepo, accessTokenAuth, refreshTokenAuth)
 

@@ -5,21 +5,24 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/AlifRJ/Go_Auth/app/model"
 	"github.com/redis/go-redis/v9"
 )
 
 type LeaderboardUser struct {
 	UserID string  `json:"user_id"`
+	Username string `json:"username"`
 	Score  float64 `json:"score"`
 	Rank   int64   `json:"rank"` // 1-based rank position
 }
 
 type LeaderboardService struct {
 	rdb *redis.Client
+	userRepo model.UserRepository
 }
 
-func NewLeaderboardService(rdb *redis.Client) *LeaderboardService {
-	return &LeaderboardService{rdb: rdb}
+func NewLeaderboardService(rdb *redis.Client, userRepo model.UserRepository) *LeaderboardService {
+	return &LeaderboardService{rdb: rdb, userRepo: userRepo}
 }
 
 // Redis Key Formatter
@@ -49,22 +52,56 @@ func (s *LeaderboardService) SubmitScore(ctx context.Context, category string, u
 func (s *LeaderboardService) GetTopScores(ctx context.Context, category string, limit int64) ([]LeaderboardUser, error) {
 	key := s.leaderboardKey(category)
 
-	// ZRevRangeWithScores gets elements ordered from highest score to lowest
-	// Range: 0 to (limit - 1)
+	// Fetch top scores from Redis ZSET
 	results, err := s.rdb.ZRevRangeWithScores(ctx, key, 0, limit-1).Result()
 	if err != nil {
 		log.Printf("Redis leaderboard error: %v. Returning empty or fallback.", err)
 		return []LeaderboardUser{}, nil
 	}
 
+	// Extract unique User IDs from ZSET members
+    userIDs := make([]uint, 0, len(results))
+	for _, z := range results {
+		var id uint
+		if _, err := fmt.Sscanf(fmt.Sprintf("%v", z.Member), "%d", &id); err == nil {
+			userIDs = append(userIDs, id)
+		}
+	}
+
+	// Batch query PostgreSQL for usernames in 1 database call
+    userMap, err := s.userRepo.GetMapByIDs(ctx, userIDs)
+	if err != nil {
+		log.Printf("Failed to fetch user map from DB: %v", err)
+	}
+
 	leaderboard := make([]LeaderboardUser, 0, len(results))
 	for rank, z := range results {
+		userIDStr := fmt.Sprintf("%v", z.Member)
+
+		var id uint
+		fmt.Sscanf(userIDStr, "%d", &id)
+
+		username := userMap[id]
+		if username == "" {
+			username = fmt.Sprintf("Player %s", userIDStr) // Fallback if user was deleted or missing
+		}
+
 		leaderboard = append(leaderboard, LeaderboardUser{
-			UserID: fmt.Sprintf("%v", z.Member),
-			Score:  z.Score,
-			Rank:   int64(rank + 1), // 1-based rank index
+			UserID:   userIDStr,
+			Username: username,
+			Score:    z.Score,
+			Rank:     int64(rank + 1),
 		})
 	}
+
+	// leaderboard := make([]LeaderboardUser, 0, len(results))
+	// for rank, z := range results {
+	// 	leaderboard = append(leaderboard, LeaderboardUser{
+	// 		UserID: fmt.Sprintf("%v", z.Member),
+	// 		Score:  z.Score,
+	// 		Rank:   int64(rank + 1), // 1-based rank index
+	// 	})
+	// }
 
 	return leaderboard, nil
 }
