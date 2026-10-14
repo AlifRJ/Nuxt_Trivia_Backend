@@ -23,6 +23,9 @@ WORKDIR /app
 # Copy binary from builder
 COPY --from=builder /app/main .
 
+# Make sure bin is owned by appuser
+RUN chown appuser:appuser main
+
 # Switch to non-root user
 USER appuser
 
