@@ -300,7 +300,7 @@ func setRefreshTokenCookie(w http.ResponseWriter, token string, duration time.Du
 	cookie := &http.Cookie{
 		Name:     "refresh_token",
 		Value:    token,
-		Path:     "/v1",
+		Path:     "/",
 		Expires:  time.Now().Add(duration),
 		HttpOnly: true,
 		Secure:   isProduction,
@@ -326,7 +326,7 @@ func clearRefreshTokenCookie(w http.ResponseWriter) {
 	cookie := &http.Cookie{
 		Name:     "refresh_token",
 		Value:    "",
-		Path:     "/v1",
+		Path:     "/",
 		Expires:  time.Unix(0, 0),
 		MaxAge:   -1,
 		HttpOnly: true,
