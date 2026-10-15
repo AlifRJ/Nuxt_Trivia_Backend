@@ -11,7 +11,7 @@ func AuthMigration(ctx context.Context, db *pgxpool.Pool) error {
 	query := `
 	-- Auth Sessions Tabel (Refresh Token Persistence)
 	CREATE TABLE IF NOT EXISTS auth_sessions (
-		id UUID PRIMARY KEY DEFAULT uuidv7(),
+		id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
 		user_id UUID NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
 		refresh_token TEXT NOT NULL,
 		expires_at TIMESTAMPTZ NOT NULL,
@@ -20,10 +20,10 @@ func AuthMigration(ctx context.Context, db *pgxpool.Pool) error {
 	);
 
 	-- Index for searching by user_id
-	CREATE INDEX IF NOT EXISTS idx_auth_sessions_user_id ON auth_sessions(user_id);
+	-- CREATE INDEX IF NOT EXISTS idx_auth_sessions_user_id ON auth_sessions(user_id);
 
 	-- Quick lookup by refresh token
-	-- CREATE UNIQUE INDEX IF NOT EXISTS idx_auth_sessions_refresh_token ON auth_sessions(refresh_token);
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_auth_sessions_refresh_token ON auth_sessions(refresh_token);
 	`
 
 	if _, err := db.Exec(ctx, query); err != nil {

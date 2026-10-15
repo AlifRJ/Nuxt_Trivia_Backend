@@ -11,18 +11,18 @@ func ScoreMigration(ctx context.Context, db *pgxpool.Pool) error {
 	query := `
 	-- Scores Table
 	CREATE TABLE IF NOT EXISTS scores (
-		id UUID PRIMARY KEY DEFAULT uuidv7(),
+		id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
 		user_id UUID NOT NULL REFERENCES users(id) on DELETE CASCADE,
 		score INT NOT NULL DEFAULT 0,
-		category VARCHAR(255) NOT NULL,
-		difficulty VARCHAR(255) NOT NULL,
+		category VARCHAR(100) NOT NULL,
+		difficulty VARCHAR(20) NOT NULL,
 		created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
 		deleted_at TIMESTAMPTZ
 	);
 
 	-- Fast User Query Index
 	CREATE INDEX IF NOT EXISTS idx_scores_user_id 
-	ON scores(user_id) 
+	ON scores(user_id, created_at DESC) 
 	WHERE deleted_at IS NULL;
 
 	-- Global Leaderboard Index (Fast ORDER BY score DESC)

@@ -35,6 +35,9 @@ func main() {
 	defer rdb.Close()
 
 	// Run migrations
+	if err := migration.UuidSQLFunction(ctx, db); err != nil {
+		log.Fatalf("Failed to add uuid7 helper function: %v\n", err)
+	}
 	if err := migration.UserMigration(ctx, db); err != nil {
 		log.Fatalf("Failed to execute user migration: %v\n", err)
 	}

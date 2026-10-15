@@ -11,7 +11,7 @@ func UserMigration(ctx context.Context, db *pgxpool.Pool) error {
 	query := `
 	-- Users Tabel
 	CREATE TABLE IF NOT EXISTS users (
-		id UUID PRIMARY KEY DEFAULT uuidv7(),
+		id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
 		name VARCHAR(255) NOT NULL,
 		username VARCHAR(255) NOT NULL,
 		email VARCHAR(255) NOT NULL,
