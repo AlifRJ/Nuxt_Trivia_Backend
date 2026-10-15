@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"time"
+	"uuid"
 
 	"github.com/AlifRJ/Go_Auth/app/model"
 	"github.com/go-chi/jwtauth/v5"
-	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -55,7 +55,7 @@ func (s *AuthService) Login(ctx context.Context, identity, password string) (str
 	return accessToken, refreshToken, user, nil
 }
 
-func (s *AuthService) RefreshToken(ctx context.Context, userID uint, rawRefreshToken string) (string, string, error) {
+func (s *AuthService) RefreshToken(ctx context.Context, userID uuid.UUID, rawRefreshToken string) (string, string, error) {
 	// Verify Refresh Token
 	valid, err := s.authRepo.VerifyRefreshToken(ctx, userID, rawRefreshToken)
 	if err != nil || !valid {
@@ -72,7 +72,7 @@ func (s *AuthService) RefreshToken(ctx context.Context, userID uint, rawRefreshT
 	return s.generateTokenPair(ctx, user.ID, user.Name, user.Username, user.Email)
 }
 
-func (s *AuthService) Logout(ctx context.Context, userID uint, jti string, accessTTL time.Duration) error {
+func (s *AuthService) Logout(ctx context.Context, userID uuid.UUID, jti string, accessTTL time.Duration) error {
 	// Delete Refresh Token
 	if err := s.authRepo.DeleteRefreshToken(ctx, userID); err != nil {
 		return err
@@ -89,12 +89,13 @@ func (s *AuthService) Logout(ctx context.Context, userID uint, jti string, acces
 }
 
 // Access Token dan Refresh Token Pair Access Token dan Refresh Token Helper
-func (s *AuthService) generateTokenPair(ctx context.Context, userID uint, name, username, email string) (string, string, error) {
+func (s *AuthService) generateTokenPair(ctx context.Context, userID uuid.UUID, name, username, email string) (string, string, error) {
 	// --- Access Token ---
 	accessJTI := uuid.New().String()
+	user_id := userID.String()
 	accessClaims := map[string]any{
 		"jti":      accessJTI,
-		"user_id":  userID,
+		"user_id":  user_id,
 		"name":     name,
 		"username": username,
 		"email":    email,

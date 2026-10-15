@@ -9,21 +9,21 @@ import (
 
 func UserMigration(ctx context.Context, db *pgxpool.Pool) error {
 	query := `
-	-- 1. Users Tabel
+	-- Users Tabel
 	CREATE TABLE IF NOT EXISTS users (
-		id SERIAL PRIMARY KEY,
+		id UUID PRIMARY KEY DEFAULT uuidv7(),
 		name VARCHAR(255) NOT NULL,
-		username VARCHAR(255) UNIQUE NOT NULL,
-		email VARCHAR(255) UNIQUE NOT NULL,
+		username VARCHAR(255) NOT NULL,
+		email VARCHAR(255) NOT NULL,
 		password VARCHAR(255) NOT NULL,
-		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-		updated_at TIMESTAMP,
-		deleted_at TIMESTAMP
+		created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+		updated_at TIMESTAMPTZ,
+		deleted_at TIMESTAMPTZ
 	);
 
-	-- 2. Email/Username Index for Login & Soft Delete
-	CREATE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE deleted_at IS NULL;
-	CREATE INDEX IF NOT EXISTS idx_users_username ON users(username) WHERE deleted_at IS NULL;
+	-- Email/Username Index for Login & Soft Delete
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE deleted_at IS NULL;
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username) WHERE deleted_at IS NULL;
 	`
 
 	if _, err := db.Exec(ctx, query); err != nil {

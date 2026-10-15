@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"time"
+	"uuid"
 
 	"github.com/AlifRJ/Go_Auth/app/middleware"
 	"github.com/AlifRJ/Go_Auth/app/model"
@@ -135,8 +136,6 @@ func (h *AuthHandler) RegisterRoutes(r chi.Router) {
 
 // Login Handler
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request){
-	defer r.Body.Close()
-
 	// Request Validation
 	var body struct {
 		Identity  string `json:"identity"`
@@ -341,20 +340,22 @@ func clearRefreshTokenCookie(w http.ResponseWriter) {
 	http.SetCookie(w, cookie)
 }
 
-func extractUserIDFromClaims(claims map[string]any) (uint, error) {
+func extractUserIDFromClaims(claims map[string]any) (uuid.UUID, error) {
 	val, ok := claims["user_id"]
 	if !ok {
-		return 0, errors.New("invalid or missing user_id claim")
+		return uuid.Nil(), errors.New("invalid or missing user_id claim")
 	}
 
 	switch v := val.(type) {
-	case float64:
-		return uint(v), nil
-	case uint:
+	case string:
+		u, err := uuid.Parse(v)
+		if err != nil{
+			return uuid.Nil(), errors.New("Invalid user_id")
+		}
+		return u, nil
+	case uuid.UUID:
 		return v, nil
-	case int:
-		return uint(v), nil
 	default:
-		return 0, errors.New("invalid or missing user_id claim")
+		return uuid.Nil(), errors.New("invalid or missing user_id claim")
 	}
 }

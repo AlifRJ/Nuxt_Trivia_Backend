@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+	"uuid"
 
 	"github.com/AlifRJ/Go_Auth/app/model"
 	"github.com/redis/go-redis/v9"
@@ -29,8 +30,8 @@ func (c *cachedScoreRepository) scoresAllKey(limit, offset int) string {
 	return fmt.Sprintf("scores:all:limit:%d:offset:%d", limit, offset)
 }
 
-func (c *cachedScoreRepository) userScoresKey(userID uint) string {
-	return fmt.Sprintf("scores:user:%d", userID)
+func (c *cachedScoreRepository) userScoresKey(userID uuid.UUID) string {
+	return fmt.Sprintf("scores:user:%s", userID.String())
 }
 
 // func (c *cachedScoreRepository) userScoresPattern(userID uint) string {
@@ -71,7 +72,7 @@ func (c *cachedScoreRepository) GetAll(ctx context.Context, limit, offset int) (
 	return scores, nil
 }
 
-func (c *cachedScoreRepository) GetByUser(ctx context.Context, userID uint) ([]*model.Score, error) {
+func (c *cachedScoreRepository) GetByUser(ctx context.Context, userID uuid.UUID) ([]*model.Score, error) {
 	key := c.userScoresKey(userID)
 
 	// Fetch from Redis
@@ -97,7 +98,7 @@ func (c *cachedScoreRepository) GetByUser(ctx context.Context, userID uint) ([]*
 	return scores, nil
 }
 
-func (c *cachedScoreRepository) GetByID(ctx context.Context, userID uint) (*model.Score, error) {
+func (c *cachedScoreRepository) GetByID(ctx context.Context, userID uuid.UUID) (*model.Score, error) {
 	key := c.userScoresKey(userID)
 
 	// Fetch From Redis
@@ -135,7 +136,7 @@ func (c *cachedScoreRepository) Create(ctx context.Context, score *model.Score) 
 	return nil
 }
 
-func (c *cachedScoreRepository) Delete(ctx context.Context, id uint) error {
+func (c *cachedScoreRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	if err := c.dbRepo.Delete(ctx, id); err != nil {
 		return err
 	}
@@ -147,7 +148,7 @@ func (c *cachedScoreRepository) Delete(ctx context.Context, id uint) error {
 	return nil
 }
 
-func (c *cachedScoreRepository) PermanentDelete(ctx context.Context, id uint) error {
+func (c *cachedScoreRepository) PermanentDelete(ctx context.Context, id uuid.UUID) error {
 	if err := c.dbRepo.PermanentDelete(ctx, id); err != nil {
 		return err
 	}

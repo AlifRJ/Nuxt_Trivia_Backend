@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"time"
+	"uuid"
 
 	"github.com/AlifRJ/Go_Auth/app/model"
 	"github.com/jackc/pgx/v5"
@@ -20,7 +21,7 @@ func NewPostgresAuthRepository(db *pgxpool.Pool) model.AuthRepository {
 }
 
 // Store Refresh Token
-func (r *PostgresAuthRepository) StoreRefreshToken(ctx context.Context, userID uint, token string, ttl time.Duration) error {
+func (r *PostgresAuthRepository) StoreRefreshToken(ctx context.Context, userID uuid.UUID, token string, ttl time.Duration) error {
 	expiresAt := time.Now().Add(ttl)
 
 	query := `
@@ -38,7 +39,7 @@ func (r *PostgresAuthRepository) StoreRefreshToken(ctx context.Context, userID u
 }
 
 // Verify Refresh Token
-func (r *PostgresAuthRepository) VerifyRefreshToken(ctx context.Context, userID uint, token string) (bool, error) {
+func (r *PostgresAuthRepository) VerifyRefreshToken(ctx context.Context, userID uuid.UUID, token string) (bool, error) {
 	query := `
 		SELECT refresh_token, expires_at 
 		FROM auth_sessions 
@@ -64,7 +65,7 @@ func (r *PostgresAuthRepository) VerifyRefreshToken(ctx context.Context, userID 
 }
 
 // Delete Refresh Token
-func (r *PostgresAuthRepository) DeleteRefreshToken(ctx context.Context, userID uint) error {
+func (r *PostgresAuthRepository) DeleteRefreshToken(ctx context.Context, userID uuid.UUID) error {
 	query := `DELETE FROM auth_sessions WHERE user_id = $1`
 
 	_, err := r.db.Exec(ctx, query, userID)

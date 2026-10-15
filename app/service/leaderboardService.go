@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"uuid"
 
 	"github.com/AlifRJ/Go_Auth/app/model"
 	"github.com/redis/go-redis/v9"
@@ -32,12 +33,12 @@ func (s *LeaderboardService) leaderboardKey(category string) string {
 
 // SubmitScore updates a user's score in the leaderboard ZSET.
 // Uses ZAdd to update or set the absolute score.
-func (s *LeaderboardService) SubmitScore(ctx context.Context, category string, userID uint, score float64) error {
+func (s *LeaderboardService) SubmitScore(ctx context.Context, category string, userID uuid.UUID, score float64) error {
 	key := s.leaderboardKey(category)
-	member := fmt.Sprintf("%d", userID)
+	member := userID.String()
 
 	// ZAdd adds or updates score for the member
-	err := s.rdb.ZAdd(ctx, key, redis.Z{
+	err := s.rdb.ZAddGT(ctx, key, redis.Z{
 		Score:  score,
 		Member: member,
 	}).Err()
@@ -50,40 +51,51 @@ func (s *LeaderboardService) SubmitScore(ctx context.Context, category string, u
 
 // GetTopScores retrieves top N players ordered from highest to lowest score (O(log(N) + M)).
 func (s *LeaderboardService) GetTopScores(ctx context.Context, category string, limit int64) ([]LeaderboardUser, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+	
 	key := s.leaderboardKey(category)
 
 	// Fetch top scores from Redis ZSET
 	results, err := s.rdb.ZRevRangeWithScores(ctx, key, 0, limit-1).Result()
 	if err != nil {
-		log.Printf("Redis leaderboard error: %v. Returning empty or fallback.", err)
+		log.Printf("[WARN] Leaderboard fetch failed: %v", err)
 		return []LeaderboardUser{}, nil
 	}
 
 	// Extract unique User IDs from ZSET members
-    userIDs := make([]uint, 0, len(results))
+    userIDs := make([]uuid.UUID, 0, len(results))
 	for _, z := range results {
-		var id uint
-		if _, err := fmt.Sscanf(fmt.Sprintf("%v", z.Member), "%d", &id); err == nil {
-			userIDs = append(userIDs, id)
+		userIDStr := fmt.Sprintf("%v", z.Member)
+		if parsedID, err := uuid.Parse(userIDStr); err == nil {
+			userIDs = append(userIDs, parsedID)
 		}
 	}
 
 	// Batch query PostgreSQL for usernames in 1 database call
-    userMap, err := s.userRepo.GetMapByIDs(ctx, userIDs)
-	if err != nil {
-		log.Printf("Failed to fetch user map from DB: %v", err)
+    userMap := make(map[uuid.UUID]string)
+	if len(userIDs) > 0 && s.userRepo != nil {
+		fetchedMap, err := s.userRepo.GetMapByIDs(ctx, userIDs)
+		if err != nil {
+			log.Printf("[WARN] Failed to fetch user map from DB: %v", err)
+		} else {
+			userMap = fetchedMap
+		}
 	}
 
 	leaderboard := make([]LeaderboardUser, 0, len(results))
 	for rank, z := range results {
 		userIDStr := fmt.Sprintf("%v", z.Member)
 
-		var id uint
-		fmt.Sscanf(userIDStr, "%d", &id)
+		parsedID, err := uuid.Parse(userIDStr)
+		if err != nil {
+			parsedID = uuid.Nil()
+		}
 
-		username := userMap[id]
+		username := userMap[parsedID]
 		if username == "" {
-			username = fmt.Sprintf("Player %s", userIDStr) // Fallback if user was deleted or missing
+			username = fmt.Sprintf("Player %s", userIDStr[:8]) // Abbreviate fallback fallback
 		}
 
 		leaderboard = append(leaderboard, LeaderboardUser{
@@ -94,22 +106,13 @@ func (s *LeaderboardService) GetTopScores(ctx context.Context, category string, 
 		})
 	}
 
-	// leaderboard := make([]LeaderboardUser, 0, len(results))
-	// for rank, z := range results {
-	// 	leaderboard = append(leaderboard, LeaderboardUser{
-	// 		UserID: fmt.Sprintf("%v", z.Member),
-	// 		Score:  z.Score,
-	// 		Rank:   int64(rank + 1), // 1-based rank index
-	// 	})
-	// }
-
 	return leaderboard, nil
 }
 
 // GetUserRank gets a specific user's position and score in the leaderboard.
-func (s *LeaderboardService) GetUserRank(ctx context.Context, category string, userID uint) (*LeaderboardUser, error) {
+func (s *LeaderboardService) GetUserRank(ctx context.Context, category string, userID uuid.UUID) (*LeaderboardUser, error) {
 	key := s.leaderboardKey(category)
-	member := fmt.Sprintf("%d", userID)
+	member := userID.String()
 
 	// ZRevRank returns 0-based rank index (0 = 1st place)
 	rank, err := s.rdb.ZRevRank(ctx, key, member).Result()
@@ -120,22 +123,31 @@ func (s *LeaderboardService) GetUserRank(ctx context.Context, category string, u
 		return nil, fmt.Errorf("failed to fetch user rank: %w", err)
 	}
 
-	// Fetch actual score
+	// Fetch score
 	score, err := s.rdb.ZScore(ctx, key, member).Result()
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch user score: %w", err)
 	}
 
+	// Resolve username
+	username := fmt.Sprintf("Player %s", member[:8])
+	if s.userRepo != nil {
+		if user, err := s.userRepo.GetByID(ctx, userID); err == nil && user != nil {
+			username = user.Username
+		}
+	}
+
 	return &LeaderboardUser{
 		UserID: member,
+		Username: username,
 		Score:  score,
 		Rank:   rank + 1, // Convert 0-based to 1-based rank
 	}, nil
 }
 
 // RemoveUser removes a user from a specific leaderboard ZSET
-func (s *LeaderboardService) RemoveUser(ctx context.Context, category string, userID uint) error {
+func (s *LeaderboardService) RemoveUser(ctx context.Context, category string, userID uuid.UUID) error {
 	key := s.leaderboardKey(category)
-	member := fmt.Sprintf("%d", userID)
+	member := userID.String()
 	return s.rdb.ZRem(ctx, key, member).Err()
 }

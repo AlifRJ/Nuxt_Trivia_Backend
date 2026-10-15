@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"time"
+	"uuid"
 
 	"github.com/AlifRJ/Go_Auth/app/model"
 	"github.com/redis/go-redis/v9"
@@ -23,8 +24,8 @@ func NewCachedAuthRepository(rdb *redis.Client, authRepo model.AuthRepository) m
 }
 
 // Format Key Helpers
-func (r *cachedAuthRepository) refreshTokenKey(userID uint) string {
-	return fmt.Sprintf("auth:refresh_token:%d", userID)
+func (r *cachedAuthRepository) refreshTokenKey(userID uuid.UUID) string {
+	return fmt.Sprintf("auth:refresh_token:%s", userID.String())
 }
 
 func (r *cachedAuthRepository) blacklistKey(jti string) string {
@@ -32,7 +33,7 @@ func (r *cachedAuthRepository) blacklistKey(jti string) string {
 }
 
 // Store Refresh Token
-func (r *cachedAuthRepository) StoreRefreshToken(ctx context.Context, userID uint, token string, ttl time.Duration) error {
+func (r *cachedAuthRepository) StoreRefreshToken(ctx context.Context, userID uuid.UUID, token string, ttl time.Duration) error {
 	// Save to Database
 	if err := r.authRepo.StoreRefreshToken(ctx, userID, token, ttl); err != nil {
 		return err
@@ -48,7 +49,7 @@ func (r *cachedAuthRepository) StoreRefreshToken(ctx context.Context, userID uin
 }
 
 // Verify Refresh Token
-func (r *cachedAuthRepository) VerifyRefreshToken(ctx context.Context, userID uint, token string) (bool, error) {
+func (r *cachedAuthRepository) VerifyRefreshToken(ctx context.Context, userID uuid.UUID, token string) (bool, error) {
 	key := r.refreshTokenKey(userID)
 
 	// Check in Cache
@@ -73,7 +74,7 @@ func (r *cachedAuthRepository) VerifyRefreshToken(ctx context.Context, userID ui
 }
 
 // Delete Refresh Token
-func (r *cachedAuthRepository) DeleteRefreshToken(ctx context.Context, userID uint) error {
+func (r *cachedAuthRepository) DeleteRefreshToken(ctx context.Context, userID uuid.UUID) error {
 	// Delete from Database
 	_ = r.authRepo.DeleteRefreshToken(ctx, userID)
 

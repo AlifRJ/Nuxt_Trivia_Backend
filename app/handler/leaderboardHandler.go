@@ -90,7 +90,7 @@ func (h *LeaderboardHandler) GetUserRank(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	userID, err := parseUintParam(r, "userID")
+	userID, err := parseUUIDParam(r, "userID")
 	if err != nil {
 		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid userID parameter"})
 		return

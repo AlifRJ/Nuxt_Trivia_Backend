@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -80,7 +81,7 @@ func (h *ScoreHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 
 // GetByUser fetches all scores created by a specific user
 func (h *ScoreHandler) GetByUser(w http.ResponseWriter, r *http.Request) {
-	userID, err := parseUintParam(r, "userID")
+	userID, err := parseUUIDParam(r, "userID")
 	if err != nil {
 		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid userID parameter"})
 		return
@@ -97,8 +98,6 @@ func (h *ScoreHandler) GetByUser(w http.ResponseWriter, r *http.Request) {
 
 // Create registers a new score record
 func (h *ScoreHandler) Create(w http.ResponseWriter, r *http.Request) {
-	defer r.Body.Close()
-
 	// 1. Extract authenticated User ID directly from JWT claims
 	_, claims, err := jwtauth.FromContext(r.Context())
 	if err != nil {
@@ -130,6 +129,8 @@ func (h *ScoreHandler) Create(w http.ResponseWriter, r *http.Request) {
 			respondJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
+
+		log.Printf("[ERROR] RegisterScore failed: %v", err)
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to create score"})
 		return
 	}
@@ -139,7 +140,7 @@ func (h *ScoreHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 // DeleteScore performs a soft delete on a score record
 func (h *ScoreHandler) DeleteScore(w http.ResponseWriter, r *http.Request) {
-	id, err := parseUintParam(r, "id")
+	id, err := parseUUIDParam(r, "id")
 	if err != nil {
 		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid ID parameter"})
 		return
@@ -159,7 +160,7 @@ func (h *ScoreHandler) DeleteScore(w http.ResponseWriter, r *http.Request) {
 
 // PermanentlyDeleteScore hard deletes a score record from the database
 func (h *ScoreHandler) PermanentlyDeleteScore(w http.ResponseWriter, r *http.Request) {
-	id, err := parseUintParam(r, "id")
+	id, err := parseUUIDParam(r, "id")
 	if err != nil {
 		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid ID parameter"})
 		return

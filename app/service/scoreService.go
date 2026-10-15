@@ -3,7 +3,10 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
+	"strings"
+	"uuid"
 
 	"github.com/AlifRJ/Go_Auth/app/model"
 )
@@ -36,11 +39,14 @@ func (s *ScoreService) GetAll(ctx context.Context, limit, offset int) ([]*model.
 	return s.repo.GetAll(ctx, limit, offset)
 }
 
-func (s *ScoreService) GetByUser(ctx context.Context, userID uint) ([]*model.Score, error) {
+func (s *ScoreService) GetByUser(ctx context.Context, userID uuid.UUID) ([]*model.Score, error) {
 	return s.repo.GetByUser(ctx, userID)
 }
 
-func (s *ScoreService) RegisterScore(ctx context.Context, userID, scoreVal uint, category, difficulty string) (*model.Score, error) {
+func (s *ScoreService) RegisterScore(ctx context.Context, userID uuid.UUID, scoreVal uint, category, difficulty string) (*model.Score, error) {
+	category = strings.ToLower(strings.TrimSpace(category))
+	difficulty = strings.ToLower(strings.TrimSpace(difficulty))
+	
 	// Validate empty request
 	if  category == "" || difficulty == "" {
 		return nil, ErrInvalidInput
@@ -54,7 +60,7 @@ func (s *ScoreService) RegisterScore(ctx context.Context, userID, scoreVal uint,
 	}
 	
 	if err := s.repo.Create(ctx, score); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to register score: %w", err)
 	}
 
 	// Push to Redis ZSET Leaderboard (Global & Category specific)
@@ -66,7 +72,7 @@ func (s *ScoreService) RegisterScore(ctx context.Context, userID, scoreVal uint,
 	return score, nil
 }
 
-func (s *ScoreService) DeleteScore(ctx context.Context, id uint) error {
+func (s *ScoreService) DeleteScore(ctx context.Context, id uuid.UUID) error {
 	scoreModel, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return err
@@ -85,7 +91,7 @@ func (s *ScoreService) DeleteScore(ctx context.Context, id uint) error {
 	return nil
 }
 
-func (s *ScoreService) DeleteScorePermanently(ctx context.Context, id uint) error {
+func (s *ScoreService) DeleteScorePermanently(ctx context.Context, id uuid.UUID) error {
 	if err := s.repo.PermanentDelete(ctx, id); err != nil {
 		return err
 	}

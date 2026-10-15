@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+	"uuid"
 
 	"github.com/AlifRJ/Go_Auth/app/model"
 	"github.com/redis/go-redis/v9"
@@ -21,11 +22,11 @@ func NewCachedUserRepository(rdb *redis.Client, dbRepo model.UserRepository, ttl
 }
 
 // Key formatters
-func (c *cachedUserRepository) userKey(id uint) string {
-	return fmt.Sprintf("user:%d", id)
+func (c *cachedUserRepository) userKey(id uuid.UUID) string {
+	return fmt.Sprintf("user:%s", id.String())
 }
 
-func (c *cachedUserRepository) GetByID(ctx context.Context, id uint) (*model.User, error) {
+func (c *cachedUserRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.User, error) {
 	key := c.userKey(id)
 
 	// Fetch From Redis
@@ -51,7 +52,7 @@ func (c *cachedUserRepository) GetByID(ctx context.Context, id uint) (*model.Use
 	return user, nil
 }
 
-func (c *cachedUserRepository) GetMapByIDs(ctx context.Context, ids []uint) (map[uint]string, error){
+func (c *cachedUserRepository) GetMapByIDs(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error){
 	return c.dbRepo.GetMapByIDs(ctx, ids)
 }
 
@@ -85,7 +86,7 @@ func (c *cachedUserRepository) Update(ctx context.Context, user *model.User) err
 	return nil
 }
 
-func (c *cachedUserRepository) Delete(ctx context.Context, id uint) error {
+func (c *cachedUserRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	if err := c.dbRepo.Delete(ctx, id); err != nil {
 		return err
 	}
@@ -95,7 +96,7 @@ func (c *cachedUserRepository) Delete(ctx context.Context, id uint) error {
 	return nil
 }
 
-func (c *cachedUserRepository) PermanentDelete(ctx context.Context, id uint) error {
+func (c *cachedUserRepository) PermanentDelete(ctx context.Context, id uuid.UUID) error {
 	if err := c.dbRepo.PermanentDelete(ctx, id); err != nil {
 		return err
 	}

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"uuid"
 
 	"github.com/AlifRJ/Go_Auth/app/model"
 	"golang.org/x/crypto/bcrypt"
@@ -34,7 +35,7 @@ func (s *UserService) GetAll(ctx context.Context, limit, offset int) ([]*model.U
 	return s.repo.GetAll(ctx, limit, offset)
 }
 
-func (s *UserService) GetByID(ctx context.Context, id uint) (*model.User, error) {
+func (s *UserService) GetByID(ctx context.Context, id uuid.UUID) (*model.User, error) {
 	return s.repo.GetByID(ctx, id)
 }
 
@@ -50,7 +51,7 @@ func (s *UserService) RegisterUser(ctx context.Context, name, username, email, p
 	}
 
 	// Validate username
-	if len(username) < 5 {
+	if len(username) < 6 {
 		return nil, errors.New("Username must be at least 6 character long")
 	}
 	
@@ -79,7 +80,7 @@ func (s *UserService) RegisterUser(ctx context.Context, name, username, email, p
 	return user, nil
 }
 
-func (s *UserService) UpdateUser(ctx context.Context, id uint, name, username, email, password string) (*model.User, error) {
+func (s *UserService) UpdateUser(ctx context.Context, id uuid.UUID, name, username, email, password string) (*model.User, error) {
 	// Fetch existing user record
 	existingUser, err := s.repo.GetByID(ctx, id)
 	if err != nil {
@@ -122,10 +123,10 @@ func (s *UserService) UpdateUser(ctx context.Context, id uint, name, username, e
 	return existingUser, nil
 }
 
-func (s *UserService) DeleteUser(ctx context.Context, id uint) error {
+func (s *UserService) DeleteUser(ctx context.Context, id uuid.UUID) error {
 	return s.repo.Delete(ctx, id)
 }
 
-func (s *UserService) DeleteUserPermanently(ctx context.Context, id uint) error {
+func (s *UserService) DeleteUserPermanently(ctx context.Context, id uuid.UUID) error {
 	return s.repo.PermanentDelete(ctx, id)
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"uuid"
 
 	"github.com/AlifRJ/Go_Auth/app/model"
 	"github.com/jackc/pgx/v5"
@@ -47,7 +48,7 @@ func (r *PostgresUserRepository) GetAll(ctx context.Context, limit, offset int) 
 	return users, nil
 }
 
-func (r *PostgresUserRepository) GetByID(ctx context.Context, id uint) (*model.User, error) {
+func (r *PostgresUserRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.User, error) {
 	query := `SELECT id, name, username, email, created_at, updated_at, deleted_at FROM users WHERE id = $1 AND deleted_at IS NULL`
 	
 	var u model.User
@@ -62,9 +63,9 @@ func (r *PostgresUserRepository) GetByID(ctx context.Context, id uint) (*model.U
 	return &u, nil
 }
 
-func (r *PostgresUserRepository) GetMapByIDs(ctx context.Context, ids []uint) (map[uint]string, error) {
+func (r *PostgresUserRepository) GetMapByIDs(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error) {
 	if len(ids) == 0 {
-		return make(map[uint]string), nil
+		return make(map[uuid.UUID]string), nil
 	}
 
 	query := `
@@ -79,9 +80,9 @@ func (r *PostgresUserRepository) GetMapByIDs(ctx context.Context, ids []uint) (m
 	}
 	defer rows.Close()
 
-	userMap := make(map[uint]string, len(ids))
+	userMap := make(map[uuid.UUID]string, len(ids))
 	for rows.Next() {
-		var id uint
+		var id uuid.UUID
 		var username string
 		if err := rows.Scan(&id, &username); err != nil {
 			return nil, err
@@ -182,7 +183,7 @@ func (r *PostgresUserRepository) Update(ctx context.Context, user *model.User) e
 	return nil
 }
 
-func (r *PostgresUserRepository) Delete(ctx context.Context, id uint) error {
+func (r *PostgresUserRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	query := `UPDATE users SET deleted_at = CURRENT_TIMESTAMP where id = $1 AND deleted_at IS NULL`
 	
 	tag, err := r.db.Exec(ctx, query, id)
@@ -197,7 +198,7 @@ func (r *PostgresUserRepository) Delete(ctx context.Context, id uint) error {
 	return nil
 }
 
-func (r *PostgresUserRepository) PermanentDelete(ctx context.Context, id uint) error {
+func (r *PostgresUserRepository) PermanentDelete(ctx context.Context, id uuid.UUID) error {
 	query := `DELETE FROM users WHERE id = $1`
 	
 	commandTag, err := r.db.Exec(ctx, query, id)

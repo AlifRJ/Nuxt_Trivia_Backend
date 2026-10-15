@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"uuid"
 
 	"github.com/AlifRJ/Go_Auth/app/model"
 	"github.com/jackc/pgx/v5"
@@ -52,8 +53,8 @@ func (r *PostgresScoreRepository) GetAll(ctx context.Context, limit, offset int)
 	return scores, nil
 }
 
-func (r *PostgresScoreRepository) GetByID(ctx context.Context, id uint) (*model.Score, error) {
-	query := `SELECT id, user_id, score, category, difficulty, created_at, deleted_at FROM scores WHERE deleted_at IS NULL AND id = $1 ORDER BY created_at DESC`
+func (r *PostgresScoreRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.Score, error) {
+	query := `SELECT id, user_id, score, category, difficulty, created_at, deleted_at FROM scores WHERE deleted_at IS NULL AND id = $1`
 
 	
 	var score model.Score
@@ -68,7 +69,7 @@ func (r *PostgresScoreRepository) GetByID(ctx context.Context, id uint) (*model.
 	return &score, nil
 }
 
-func (r *PostgresScoreRepository) GetByUser(ctx context.Context, userID uint) ([]*model.Score, error) {
+func (r *PostgresScoreRepository) GetByUser(ctx context.Context, userID uuid.UUID) ([]*model.Score, error) {
 	query := `SELECT id, user_id, score, category, difficulty, created_at, deleted_at FROM scores WHERE deleted_at IS NULL AND user_id = $1 ORDER BY created_at DESC`
 	
 	rows, err := r.db.Query(ctx, query, userID)
@@ -104,7 +105,7 @@ func (r *PostgresScoreRepository) Create(ctx context.Context, score *model.Score
 	return nil
 }
 
-func (r *PostgresScoreRepository) Delete(ctx context.Context, id uint) error {
+func (r *PostgresScoreRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	query := `UPDATE scores SET deleted_at = CURRENT_TIMESTAMP where id = $1 AND deleted_at IS NULL`
 	
 	tag, err := r.db.Exec(ctx, query, id)
@@ -119,7 +120,7 @@ func (r *PostgresScoreRepository) Delete(ctx context.Context, id uint) error {
 	return nil
 }
 
-func (r *PostgresScoreRepository) PermanentDelete(ctx context.Context, id uint) error {
+func (r *PostgresScoreRepository) PermanentDelete(ctx context.Context, id uuid.UUID) error {
 	query := `DELETE FROM scores WHERE id = $1`
 	
 	commandTag, err := r.db.Exec(ctx, query, id)

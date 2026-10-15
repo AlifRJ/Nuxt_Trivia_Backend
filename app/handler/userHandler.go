@@ -3,9 +3,11 @@ package handler
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
+	"uuid"
 
 	"github.com/AlifRJ/Go_Auth/app/middleware"
 	"github.com/AlifRJ/Go_Auth/app/model"
@@ -86,7 +88,7 @@ func (h *UserHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 
 // Get User by ID
 func (h *UserHandler) GetByID(w http.ResponseWriter, r *http.Request) {
-	id, err := parseUintParam(r, "id")
+	id, err := parseUUIDParam(r, "id")
 	if err != nil {
 		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid ID parameter"})
 		return
@@ -131,7 +133,7 @@ func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
 // Update User
 func (h *UserHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	// Request Params
-	id, err := parseUintParam(r, "id")
+	id, err := parseUUIDParam(r, "id")
 	if err != nil {
 		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid ID parameter"})
 		return
@@ -164,7 +166,7 @@ func (h *UserHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 
 // Soft Delete User
 func (h *UserHandler) DeleteUser(w http.ResponseWriter, r *http.Request){
-	id, err := parseUintParam(r, "id")
+	id, err := parseUUIDParam(r, "id")
 	if err != nil {
 		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid ID parameter"})
 		return
@@ -184,7 +186,7 @@ func (h *UserHandler) DeleteUser(w http.ResponseWriter, r *http.Request){
 
 // Permanent Delete User
 func (h *UserHandler) PermanentlyDeleteUser(w http.ResponseWriter, r *http.Request){
-	id, err := parseUintParam(r, "id")
+	id, err := parseUUIDParam(r, "id")
 	if err != nil {
 		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid ID parameter"})
 		return
@@ -210,11 +212,18 @@ func respondJSON(w http.ResponseWriter, code int, payload any) {
 	w.Write(response)
 }
 
-func parseUintParam(r *http.Request, key string) (uint, error) {
+var ErrEmptyParam = errors.New("URL parameter is missing or empty")
+
+func parseUUIDParam(r *http.Request, key string) (uuid.UUID, error) {
 	valStr := chi.URLParam(r, key)
-	val, err := strconv.ParseUint(valStr, 10, 32)
-	if err != nil {
-		return 0, err
+
+	if valStr == "" {
+		return uuid.Nil(), ErrEmptyParam
 	}
-	return uint(val), nil
+
+	id, err := uuid.Parse(valStr)
+	if err != nil {
+		return uuid.Nil(), fmt.Errorf("invalid UUID parameter '%s': %w", key, err)
+	}
+	return id, nil
 }

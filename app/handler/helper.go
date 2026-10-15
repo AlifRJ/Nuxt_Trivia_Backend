@@ -3,34 +3,30 @@ package handler
 import (
 	"errors"
 	"net/http"
-	"strconv"
+	"uuid"
 
 	"github.com/go-chi/httprate"
 	"github.com/go-chi/jwtauth/v5"
 )
 
 // ExtractUserIDFromClaims parses user_id safely whether unmarshaled as float64, uint, or int
-func ExtractUserIDFromClaims(claims map[string]any) (uint, error) {
+func ExtractUserIDFromClaims(claims map[string]any) (uuid.UUID, error) {
 	val, ok := claims["user_id"]
 	if !ok {
-		return 0, errors.New("invalid or missing user_id claim")
+		return uuid.Nil(), errors.New("invalid or missing user_id claim")
 	}
 
 	switch v := val.(type) {
-	case float64:
-		return uint(v), nil
-	case uint:
+	case uuid.UUID:
 		return v, nil
-	case int:
-		return uint(v), nil
 	case string:
-		id, err := strconv.ParseUint(v, 10, 32)
+		id, err := uuid.Parse(v)
 		if err != nil {
-			return 0, errors.New("invalid string user_id claim")
+			return uuid.Nil(), errors.New("invalid string user_id claim")
 		}
-		return uint(id), nil
+		return id, nil
 	default:
-		return 0, errors.New("unsupported user_id claim type")
+		return uuid.Nil(), errors.New("unsupported user_id claim type")
 	}
 }
 
@@ -46,5 +42,5 @@ func GetUserIDRateKey(r *http.Request) (string, error) {
 		return httprate.CanonicalizeIP(r.RemoteAddr), nil
 	}
 
-	return strconv.FormatUint(uint64(userID), 10), nil
+	return userID.String(), nil
 }
