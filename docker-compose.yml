@@ -59,6 +59,7 @@ services:
       - DB_PASSWORD=secretpassword
       - DB_DATABASE=go_auth_db
       - REDIS_HOST=redis
+      - REDIS_USER=
       - REDIS_PORT=6379
       - REDIS_PASSWORD=redispassword
       - ACCESS_SECRET_KEY=dev-access-secret-key-12345

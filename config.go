@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"log"
 	"os"
@@ -48,8 +49,12 @@ func initRedis(ctx context.Context) *redis.Client {
 
 	rdb := redis.NewClient(&redis.Options{
 		Addr:     fmt.Sprintf("%s:%s", redisHost, redisPort),
+		Username: os.Getenv("REDIS_USER"),
 		Password: os.Getenv("REDIS_PASSWORD"),
 		DB:       0,
+		TLSConfig: &tls.Config{
+			MinVersion: tls.VersionTLS12,
+		},
 	})
 
 	if err := rdb.Ping(ctx).Err(); err != nil {
