@@ -37,16 +37,19 @@ func NewAuthHandler(s *service.AuthService, userService *service.UserService, au
 func (h *AuthHandler) RegisterRoutes(r chi.Router) {
 	r.Route("/v1", func(r chi.Router) {
 
-		r.Options("/*", func(w http.ResponseWriter, r *http.Request) {
-        	w.WriteHeader(http.StatusOK)
-    	})
+		// r.Options("/*", func(w http.ResponseWriter, r *http.Request) {
+        // 	w.WriteHeader(http.StatusOK)
+    	// })
 
 		// Public Group
 		r.Group(func(r chi.Router){
 			// Limit public /v1 to 5 request per second per ip address
-			r.Use(httprate.LimitBy(5, time.Second, func(r *http.Request)(string, error){
-				return httprate.CanonicalizeIP(r.RemoteAddr), nil
-			}, httprate.WithLimitHandler(middleware.WriteRateLimitError)))
+			r.Use(httprate.LimitBy(5, time.Second, func(r *http.Request) (string, error) {
+                if r.Method == http.MethodOptions {
+                    return "", nil
+                }
+                return httprate.CanonicalizeIP(r.RemoteAddr), nil
+            }, httprate.WithLimitHandler(middleware.WriteRateLimitError)))
 	
 			r.Post("/login", h.Login) 
 			r.Post("/register", h.Register) 
