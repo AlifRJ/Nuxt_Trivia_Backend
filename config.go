@@ -5,37 +5,50 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 )
 
 func initPostgres(ctx context.Context) *pgxpool.Pool {
-	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
-		os.Getenv("DB_USER"),
-		os.Getenv("DB_PASSWORD"),
-		os.Getenv("DB_HOST"),
-		os.Getenv("DB_PORT"),
-		os.Getenv("DB_DATABASE"),
-	)
+	u := &url.URL{
+		Scheme: "postgres",
+		User:   url.UserPassword(os.Getenv("DB_USER"), os.Getenv("DB_PASSWORD")),
+		Host:   fmt.Sprintf("%s:%s", os.Getenv("DB_HOST"), os.Getenv("DB_PORT")),
+		Path:   os.Getenv("DB_DATABASE"),
+	}
+	q := u.Query()
+	q.Set("sslmode", "disable")
+	// Alternative URL parameter setting:
+	// q.Set("default_query_exec_mode", "simple_protocol")
+	u.RawQuery = q.Encode()
 
-	config, err := pgxpool.ParseConfig(dsn)
+	config, err := pgxpool.ParseConfig(u.String())
 	if err != nil {
 		log.Fatalf("Error parsing database DSN: %v\n", err)
 	}
 
+	config.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
+
 	config.MaxConns = 25
 	config.MinConns = 5
 	config.MaxConnLifetime = 30 * time.Minute
+	config.MaxConnIdleTime = 15 * time.Minute
 
 	db, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
 		log.Fatalf("Error creating database pool: %v\n", err)
 	}
 
-	if err := db.Ping(ctx); err != nil {
+	// Verify physical connection to database
+	pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	if err := db.Ping(pingCtx); err != nil {
 		log.Fatalf("Cannot connect to database: %v\n", err)
 	}
 
@@ -57,7 +70,10 @@ func initRedis(ctx context.Context) *redis.Client {
 		},
 	})
 
-	if err := rdb.Ping(ctx).Err(); err != nil {
+	pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	if err := rdb.Ping(pingCtx).Err(); err != nil {
 		log.Fatalf("Cannot connect to Redis: %v\n", err)
 	}
 
