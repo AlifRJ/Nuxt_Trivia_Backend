@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"uuid"
 
 	"github.com/AlifRJ/Go_Auth/app/model"
@@ -11,14 +12,14 @@ import (
 )
 
 type LeaderboardUser struct {
-	UserID string  `json:"user_id"`
-	Username string `json:"username"`
-	Score  float64 `json:"score"`
-	Rank   int64   `json:"rank"` // 1-based rank position
+	UserID   string  `json:"user_id"`
+	Username string  `json:"username"`
+	Score    float64 `json:"score"`
+	Rank     int64   `json:"rank"` // 1-based rank position
 }
 
 type LeaderboardService struct {
-	rdb *redis.Client
+	rdb      *redis.Client
 	userRepo model.UserRepository
 }
 
@@ -52,7 +53,7 @@ func (s *LeaderboardService) GetTopScores(ctx context.Context, category string, 
 	if limit <= 0 {
 		limit = 10
 	}
-	
+
 	key := s.leaderboardKey(category)
 
 	results, err := s.rdb.ZRevRangeWithScores(ctx, key, 0, limit-1).Result()
@@ -62,7 +63,7 @@ func (s *LeaderboardService) GetTopScores(ctx context.Context, category string, 
 	}
 
 	type memberInfo struct {
-		idStr string
+		idStr  string
 		idUUID uuid.UUID
 		score  float64
 	}
@@ -76,25 +77,28 @@ func (s *LeaderboardService) GetTopScores(ctx context.Context, category string, 
 			idStr = fmt.Sprintf("%v", z.Member)
 		}
 
-		parsedID, err := uuid.Parse(idStr)
+		cleanIDStr := strings.Trim(idStr, "\" '")
+
+		parsedID, err := uuid.Parse(cleanIDStr)
 		if err != nil {
+			log.Printf("[WARN] Failed to parse Redis member '%s' as UUID: %v", idStr, err)
 			parsedID = uuid.Nil()
 		} else {
 			userIDs = append(userIDs, parsedID)
 		}
 
 		members = append(members, memberInfo{
-			idStr:  idStr,
+			idStr:  cleanIDStr,
 			idUUID: parsedID,
 			score:  z.Score,
 		})
 	}
 
-    userMap := make(map[uuid.UUID]string)
+	userMap := make(map[uuid.UUID]string)
 	if len(userIDs) > 0 && s.userRepo != nil {
 		fetchedMap, err := s.userRepo.GetMapByIDs(ctx, userIDs)
 		if err != nil {
-			log.Printf("[WARN] Failed to fetch user map from DB: %v", err)
+			log.Printf("[ERROR] Failed to fetch user map from DB for %d IDs: %v", len(userIDs), err)
 		} else {
 			userMap = fetchedMap
 		}
@@ -102,8 +106,8 @@ func (s *LeaderboardService) GetTopScores(ctx context.Context, category string, 
 
 	leaderboard := make([]LeaderboardUser, 0, len(results))
 	for rank, m := range members {
-		username := userMap[m.idUUID]
-		if username == "" {
+		username, found := userMap[m.idUUID]
+		if !found || strings.TrimSpace(username) == "" {
 			prefix := m.idStr
 			if len(prefix) >= 8 {
 				prefix = prefix[:8]
@@ -148,10 +152,10 @@ func (s *LeaderboardService) GetUserRank(ctx context.Context, category string, u
 	}
 
 	return &LeaderboardUser{
-		UserID: member,
+		UserID:   member,
 		Username: username,
-		Score:  score,
-		Rank:   rank + 1,
+		Score:    score,
+		Rank:     rank + 1,
 	}, nil
 }
 

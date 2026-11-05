@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/url"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -59,16 +60,29 @@ func initPostgres(ctx context.Context) *pgxpool.Pool {
 func initRedis(ctx context.Context) *redis.Client {
 	redisHost := os.Getenv("REDIS_HOST")
 	redisPort := os.Getenv("REDIS_PORT")
+	redisDatabase := os.Getenv("REDIS_DATABASE")
 
-	rdb := redis.NewClient(&redis.Options{
+	db, err := strconv.Atoi(redisDatabase)
+	if err != nil {
+		db = 0
+	}
+
+	opts := &redis.Options{
 		Addr:     fmt.Sprintf("%s:%s", redisHost, redisPort),
 		Username: os.Getenv("REDIS_USER"),
 		Password: os.Getenv("REDIS_PASSWORD"),
-		DB:       0,
-		TLSConfig: &tls.Config{
+		DB:       db,
+	}
+
+	// Enable TLS only if REDIS_USE_TLS is set to "true"
+	if useTLS, _ := strconv.ParseBool(os.Getenv("REDIS_USE_TLS")); useTLS {
+		opts.TLSConfig = &tls.Config{
 			MinVersion: tls.VersionTLS12,
-		},
-	})
+			ServerName: redisHost,
+		}
+	}
+
+	rdb := redis.NewClient(opts)
 
 	pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()

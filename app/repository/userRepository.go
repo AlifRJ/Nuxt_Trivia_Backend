@@ -25,11 +25,11 @@ func NewPostgresUserRepository(db *pgxpool.Pool) model.UserRepository {
 
 func (r *PostgresUserRepository) GetAll(ctx context.Context, limit, offset int) ([]*model.User, error) {
 	query := `SELECT id, name, username, email, created_at, updated_at, deleted_at FROM users WHERE deleted_at IS NULL ORDER BY id DESC LIMIT $1 OFFSET $2`
-	
+
 	rows, err := r.db.Query(ctx, query, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("query GetAll failed: %w", err)
-	} 
+	}
 	defer rows.Close()
 
 	users := make([]*model.User, 0)
@@ -50,7 +50,7 @@ func (r *PostgresUserRepository) GetAll(ctx context.Context, limit, offset int) 
 
 func (r *PostgresUserRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.User, error) {
 	query := `SELECT id, name, username, email, created_at, updated_at, deleted_at FROM users WHERE id = $1 AND deleted_at IS NULL`
-	
+
 	var u model.User
 	err := r.db.QueryRow(ctx, query, id).Scan(&u.ID, &u.Name, &u.Username, &u.Email, &u.CreatedAt, &u.UpdatedAt, &u.DeletedAt)
 	if err != nil {
@@ -59,7 +59,7 @@ func (r *PostgresUserRepository) GetByID(ctx context.Context, id uuid.UUID) (*mo
 		}
 		return nil, err
 	}
-	
+
 	return &u, nil
 }
 
@@ -68,13 +68,18 @@ func (r *PostgresUserRepository) GetMapByIDs(ctx context.Context, ids []uuid.UUI
 		return make(map[uuid.UUID]string), nil
 	}
 
+	strIDs := make([]string, len(ids))
+	for i, id := range ids {
+		strIDs[i] = id.String()
+	}
+
 	query := `
 		SELECT id, username 
 		FROM users 
 		WHERE id = ANY($1) AND deleted_at IS NULL
 	`
 
-	rows, err := r.db.Query(ctx, query, ids)
+	rows, err := r.db.Query(ctx, query, strIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -159,56 +164,56 @@ func (r *PostgresUserRepository) GetByUsername(ctx context.Context, username str
 
 func (r *PostgresUserRepository) Create(ctx context.Context, user *model.User) error {
 	query := `INSERT INTO users (name, username, email, password) VALUES ($1, $2, $3, $4) RETURNING id, created_at`
-	
+
 	err := r.db.QueryRow(ctx, query, user.Name, user.Username, user.Email, user.Password).Scan(&user.ID, &user.CreatedAt)
 	if err != nil {
 		return fmt.Errorf("create user failed: %w", err)
 	}
-	
+
 	return nil
 }
 
 func (r *PostgresUserRepository) Update(ctx context.Context, user *model.User) error {
 	query := `UPDATE users SET name=$1, username=$2, email=$3, password=$4, updated_at=CURRENT_TIMESTAMP WHERE id = $5 AND deleted_at IS NULL`
-	
+
 	tag, err := r.db.Exec(ctx, query, user.Name, user.Username, user.Email, user.Password, user.ID)
 	if err != nil {
 		return err
 	}
 
-	if tag.RowsAffected() == 0{
+	if tag.RowsAffected() == 0 {
 		return ErrUserNotFound
 	}
-	
+
 	return nil
 }
 
 func (r *PostgresUserRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	query := `UPDATE users SET deleted_at = CURRENT_TIMESTAMP where id = $1 AND deleted_at IS NULL`
-	
+
 	tag, err := r.db.Exec(ctx, query, id)
 	if err != nil {
 		return err
 	}
 
-	if tag.RowsAffected() == 0{
+	if tag.RowsAffected() == 0 {
 		return ErrUserNotFound
 	}
-	
+
 	return nil
 }
 
 func (r *PostgresUserRepository) PermanentDelete(ctx context.Context, id uuid.UUID) error {
 	query := `DELETE FROM users WHERE id = $1`
-	
+
 	commandTag, err := r.db.Exec(ctx, query, id)
 	if err != nil {
 		return err
 	}
-	
+
 	if commandTag.RowsAffected() == 0 {
 		return ErrUserNotFound
 	}
-	
+
 	return nil
 }
