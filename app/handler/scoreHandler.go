@@ -33,6 +33,10 @@ func NewScoreHandler(scoreService *service.ScoreService, authRepo model.AuthRepo
 
 // RegisterRoutes sets up all routes and middleware for /v1/scores
 func (h *ScoreHandler) RegisterRoutes(r chi.Router) {
+	// ----------------------------------------------------
+	// PLAYER-FACING ROUTES (Requires User JWT)
+	// Path: /v1/scores/*
+	// ----------------------------------------------------
 	r.Route("/v1/scores", func(r chi.Router) {
 		r.Use(jwtauth.Verifier(h.accessTokenAuth))
 		r.Use(jwtauth.Authenticator(h.accessTokenAuth))
@@ -42,7 +46,6 @@ func (h *ScoreHandler) RegisterRoutes(r chi.Router) {
 		r.Group(func(r chi.Router) {
 			r.Use(httprate.LimitBy(60, time.Minute, GetUserIDRateKey, httprate.WithLimitHandler(middleware.WriteRateLimitError)))
 
-			r.Get("/", h.GetAll)
 			r.Get("/user/{userID}", h.GetByUser)
 		})
 
@@ -56,6 +59,36 @@ func (h *ScoreHandler) RegisterRoutes(r chi.Router) {
 		// Delete Group (3 requests/minute)
 		r.Group(func(r chi.Router) {
 			r.Use(httprate.LimitBy(3, time.Minute, GetUserIDRateKey, httprate.WithLimitHandler(middleware.WriteRateLimitError)))
+
+			r.Delete("/{id}", h.DeleteScore)
+		})
+	})
+	// ----------------------------------------------------
+	// DASHBOARD ADMIN ROUTES (Requires X-Dashboard-Token)
+	// Path: /v1/scores/admin/*
+	// ----------------------------------------------------
+	r.Route("/v1/scores/admin", func(r chi.Router) {
+		r.Use(middleware.RequireDashboardToken)
+
+		// Admin Read Group (60 requests/min by IP)
+		r.Group(func(r chi.Router) {
+			r.Use(httprate.LimitBy(60, time.Minute, GetIPRateKey, httprate.WithLimitHandler(middleware.WriteRateLimitError)))
+
+			r.Get("/", h.GetAll)
+			r.Get("/user/{userID}", h.GetByUser)
+		})
+
+		// Admin Create/Update Group (15 requests/min by IP)
+		r.Group(func(r chi.Router) {
+			r.Use(httprate.LimitBy(15, time.Minute, GetIPRateKey, httprate.WithLimitHandler(middleware.WriteRateLimitError)))
+
+			r.Post("/", h.Create)
+
+		})
+
+		// Admin Delete Group (3 requests/min by IP)
+		r.Group(func(r chi.Router) {
+			r.Use(httprate.LimitBy(3, time.Minute, GetIPRateKey, httprate.WithLimitHandler(middleware.WriteRateLimitError)))
 
 			r.Delete("/{id}", h.DeleteScore)
 			r.Delete("/{id}/permanent", h.PermanentlyDeleteScore)

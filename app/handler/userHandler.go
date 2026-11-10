@@ -19,50 +19,79 @@ import (
 )
 
 type UserHandler struct {
-	service 		*service.UserService
+	service         *service.UserService
 	authRepo        model.AuthRepository
 	accessTokenAuth *jwtauth.JWTAuth
 }
 
-func NewUserHandler(s *service.UserService, authRepo model.AuthRepository,accessTokenAuth * jwtauth.JWTAuth) *UserHandler {
+func NewUserHandler(s *service.UserService, authRepo model.AuthRepository, accessTokenAuth *jwtauth.JWTAuth) *UserHandler {
 	return &UserHandler{
-		service: 			s, 
-		authRepo:        	authRepo,
-		accessTokenAuth: 	accessTokenAuth,
+		service:         s,
+		authRepo:        authRepo,
+		accessTokenAuth: accessTokenAuth,
 	}
 }
 
 // Routes Definition
 func (h *UserHandler) RegisterRoutes(r chi.Router) {
+	// ----------------------------------------------------
+	// PLAYER-FACING ROUTES (Requires User JWT)
+	// Path: /v1/users/*
+	// ----------------------------------------------------
 	r.Route("/v1/users", func(r chi.Router) {
 		r.Use(jwtauth.Verifier(h.accessTokenAuth))
 		r.Use(jwtauth.Authenticator(h.accessTokenAuth))
 		r.Use(middleware.CheckTokenBlacklist(h.authRepo))
 
-		// Read Group
-		r.Group(func(r chi.Router){
-			// Limit 60 request/minute
+		// Read Group (60 requests/min)
+		r.Group(func(r chi.Router) {
 			r.Use(httprate.LimitBy(60, time.Minute, GetUserIDRateKey, httprate.WithLimitHandler(middleware.WriteRateLimitError)))
-			
+
+			r.Get("/{id}", h.GetByID)
+		})
+
+		// Create/Update Group (15 requests/min)
+		r.Group(func(r chi.Router) {
+			r.Use(httprate.LimitBy(15, time.Minute, GetUserIDRateKey, httprate.WithLimitHandler(middleware.WriteRateLimitError)))
+
+			r.Put("/{id}", h.UpdateUser)
+		})
+
+		// Delete Group (3 requests/min)
+		r.Group(func(r chi.Router) {
+			r.Use(httprate.LimitBy(3, time.Minute, GetUserIDRateKey, httprate.WithLimitHandler(middleware.WriteRateLimitError)))
+
+			r.Delete("/{id}", h.DeleteUser)
+		})
+	})
+	// ----------------------------------------------------
+	// DASHBOARD ADMIN ROUTES (Requires X-Dashboard-Token)
+	// Path: /v1/users/admin/*
+	// ----------------------------------------------------
+	r.Route("/v1/users/admin", func(r chi.Router) {
+		r.Use(middleware.RequireDashboardToken)
+
+		// Admin Read Group (60 requests/min by IP)
+		r.Group(func(r chi.Router) {
+			r.Use(httprate.LimitBy(60, time.Minute, GetIPRateKey, httprate.WithLimitHandler(middleware.WriteRateLimitError)))
+
 			r.Get("/", h.GetAll)
 			r.Get("/{id}", h.GetByID)
 		})
-		
-		// Create/Update Group
-		r.Group(func(r chi.Router){
-			// Limit 15 request/minute
-			r.Use(httprate.LimitBy(15, time.Minute, GetUserIDRateKey, httprate.WithLimitHandler(middleware.WriteRateLimitError)))
-			
+
+		// Admin Create/Update Group (15 requests/min by IP)
+		r.Group(func(r chi.Router) {
+			r.Use(httprate.LimitBy(15, time.Minute, GetIPRateKey, httprate.WithLimitHandler(middleware.WriteRateLimitError)))
+
 			r.Post("/", h.Create)
 			r.Put("/{id}", h.UpdateUser)
 
 		})
 
-		// Delete Group
-		r.Group(func(r chi.Router){
-			// Limit 3 request/minute
-			r.Use(httprate.LimitBy(3, time.Minute, GetUserIDRateKey, httprate.WithLimitHandler(middleware.WriteRateLimitError)))
-			
+		// Admin Delete Group (3 requests/min by IP)
+		r.Group(func(r chi.Router) {
+			r.Use(httprate.LimitBy(3, time.Minute, GetIPRateKey, httprate.WithLimitHandler(middleware.WriteRateLimitError)))
+
 			r.Delete("/{id}", h.DeleteUser)
 			r.Delete("/{id}/permanent", h.PermanentlyDeleteUser)
 		})
@@ -72,7 +101,7 @@ func (h *UserHandler) RegisterRoutes(r chi.Router) {
 // Get All Users
 func (h *UserHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
-	
+
 	limit, _ := strconv.Atoi(query.Get("limit"))
 	offset, _ := strconv.Atoi(query.Get("offset"))
 
@@ -110,10 +139,10 @@ func (h *UserHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 // Register new User
 func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Name  		string `json:"name"`
-		Username  	string `json:"username"`
-		Email 		string `json:"email"`
-		Password 	string `json:"password"`
+		Name     string `json:"name"`
+		Username string `json:"username"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -140,10 +169,10 @@ func (h *UserHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
-		Name  		string `json:"name"`
-		Username  	string `json:"username"`
-		Email 		string `json:"email"`
-		Password 	string `json:"password"`
+		Name     string `json:"name"`
+		Username string `json:"username"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -165,7 +194,7 @@ func (h *UserHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 }
 
 // Soft Delete User
-func (h *UserHandler) DeleteUser(w http.ResponseWriter, r *http.Request){
+func (h *UserHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	id, err := parseUUIDParam(r, "id")
 	if err != nil {
 		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid ID parameter"})
@@ -185,7 +214,7 @@ func (h *UserHandler) DeleteUser(w http.ResponseWriter, r *http.Request){
 }
 
 // Permanent Delete User
-func (h *UserHandler) PermanentlyDeleteUser(w http.ResponseWriter, r *http.Request){
+func (h *UserHandler) PermanentlyDeleteUser(w http.ResponseWriter, r *http.Request) {
 	id, err := parseUUIDParam(r, "id")
 	if err != nil {
 		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid ID parameter"})

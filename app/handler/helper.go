@@ -44,3 +44,10 @@ func GetUserIDRateKey(r *http.Request) (string, error) {
 
 	return userID.String(), nil
 }
+
+func GetIPRateKey(r *http.Request) (string, error) {
+	if r.Method == http.MethodOptions {
+		return "", nil
+	}
+	return httprate.CanonicalizeIP(r.RemoteAddr), nil
+}

@@ -59,6 +59,7 @@ func main() {
 
 	// Dependency Injection
 	userRepo := repository.NewPostgresUserRepository(db)
+	analyticRepo := repository.NewAnalyticsRepository(db)
 	scoreRepo := repository.NewPostgresScoreRepository(db)
 	authRepo := repository.NewPostgresAuthRepository(db)
 
@@ -67,17 +68,19 @@ func main() {
 	cachedAuthRepo := repository.NewCachedAuthRepository(rdb, authRepo)
 
 	userService := service.NewUserService(cachedUserRepo, cachedAuthRepo)
+	analyticService := service.NewAnalyticsService(analyticRepo)
 	leaderboardService := service.NewLeaderboardService(rdb, cachedUserRepo)
 	scoreService := service.NewScoreService(cachedScoreRepo, leaderboardService)
 	authService := service.NewAuthService(cachedUserRepo, cachedAuthRepo, accessTokenAuth, refreshTokenAuth)
 
 	userHandler := handler.NewUserHandler(userService, cachedAuthRepo, accessTokenAuth)
+	analyticHandler := handler.NewAnalyticsHandler(analyticService)
 	scoreHandler := handler.NewScoreHandler(scoreService, cachedAuthRepo, accessTokenAuth)
 	leaderboardHandler := handler.NewLeaderboardHandler(leaderboardService, cachedAuthRepo, accessTokenAuth)
 	authHandler := handler.NewAuthHandler(authService, userService, cachedAuthRepo, accessTokenAuth, refreshTokenAuth)
 
 	// Router setup (from router.go)
-	router := setupRouter(authHandler, userHandler, scoreHandler, leaderboardHandler)
+	router := setupRouter(authHandler, userHandler, scoreHandler, leaderboardHandler, analyticHandler)
 
 	port := os.Getenv("APP_PORT")
 	if port == "" {

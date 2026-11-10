@@ -19,6 +19,7 @@ func setupRouter(
 	userHandler *handler.UserHandler,
 	scoreHandler *handler.ScoreHandler,
 	leaderboardHandler *handler.LeaderboardHandler,
+	analyticHandler *handler.AnalyticsHandler,
 ) chi.Router {
 	r := chi.NewRouter()
 
@@ -63,6 +64,7 @@ func setupRouter(
 	userHandler.RegisterRoutes(r)
 	scoreHandler.RegisterRoutes(r)
 	leaderboardHandler.RegisterRoutes(r)
+	analyticHandler.RegisterRoutes(r)
 
 	return r
 }
