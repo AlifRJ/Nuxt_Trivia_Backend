@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"uuid"
 
 	"github.com/AlifRJ/Go_Auth/app/model"
@@ -13,11 +14,11 @@ var (
 	ErrPasswordTooShort = errors.New("password must be 6 characters or longer")
 	ErrEmailTaken       = errors.New("email is already registered")
 	ErrUsernameTaken    = errors.New("username is already taken")
-	ErrInvalidRequest    = errors.New("Invalid request payload")
+	ErrInvalidRequest   = errors.New("Invalid request payload")
 )
 
 type UserService struct {
-	repo model.UserRepository
+	repo     model.UserRepository
 	authRepo model.AuthRepository
 }
 
@@ -25,14 +26,32 @@ func NewUserService(repo model.UserRepository, authRepo model.AuthRepository) *U
 	return &UserService{repo: repo, authRepo: authRepo}
 }
 
-func (s *UserService) GetAll(ctx context.Context, limit, offset int) ([]*model.User, error) {
-	if limit <= 0 {
-		limit = 10 
+const (
+	defaultUserLimit = 15
+	maxUserLimit     = 100
+)
+
+func (s *UserService) GetAll(ctx context.Context, filter model.UserFilter) ([]*model.User, int, error) {
+	if filter.Limit <= 0 {
+		filter.Limit = defaultUserLimit
+	} else if filter.Limit > maxUserLimit {
+		filter.Limit = maxUserLimit
 	}
-	if offset < 0 {
-		offset = 0
+
+	if filter.Offset < 0 {
+		filter.Offset = 0
 	}
-	return s.repo.GetAll(ctx, limit, offset)
+
+	filter.Search = strings.TrimSpace(filter.Search)
+
+	switch filter.Trashed {
+	case "only", "with":
+		// valid
+	default:
+		filter.Trashed = ""
+	}
+
+	return s.repo.GetAll(ctx, filter)
 }
 
 func (s *UserService) GetByID(ctx context.Context, id uuid.UUID) (*model.User, error) {
@@ -41,7 +60,7 @@ func (s *UserService) GetByID(ctx context.Context, id uuid.UUID) (*model.User, e
 
 func (s *UserService) RegisterUser(ctx context.Context, name, username, email, password string) (*model.User, error) {
 	// Validate empty request
-	if name == "" || username == "" || email == ""{
+	if name == "" || username == "" || email == "" {
 		return nil, ErrInvalidRequest
 	}
 
@@ -54,7 +73,7 @@ func (s *UserService) RegisterUser(ctx context.Context, name, username, email, p
 	if len(username) < 6 {
 		return nil, errors.New("Username must be at least 6 character long")
 	}
-	
+
 	// validate password
 	if len(password) < 6 {
 		return nil, ErrPasswordTooShort
@@ -72,7 +91,7 @@ func (s *UserService) RegisterUser(ctx context.Context, name, username, email, p
 	if err != nil {
 		return nil, err
 	}
-	
+
 	user := &model.User{Name: name, Username: username, Email: email, Password: string(hashedPassword)}
 	if err := s.repo.Create(ctx, user); err != nil {
 		return nil, err

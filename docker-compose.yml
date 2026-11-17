@@ -62,8 +62,9 @@ services:
       - REDIS_USER=
       - REDIS_PORT=6379
       - REDIS_PASSWORD=redispassword
-      - ACCESS_SECRET_KEY=dev-access-secret-key-12345
-      - REFRESH_SECRET_KEY=dev-refresh-secret-key-12345
+      - ACCESS_SECRET_KEY=${ACCESS_SECRET_KEY}
+      - REFRESH_SECRET_KEY=${REFRESH_SECRET_KEY}
+      - DASHBOARD_API_KEY=${DASHBOARD_API_KEY}
     depends_on:
       postgres:
         condition: service_healthy

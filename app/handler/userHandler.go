@@ -93,6 +93,7 @@ func (h *UserHandler) RegisterRoutes(r chi.Router) {
 			r.Use(httprate.LimitBy(3, time.Minute, GetIPRateKey, httprate.WithLimitHandler(middleware.WriteRateLimitError)))
 
 			r.Delete("/{id}", h.DeleteUser)
+			// r.Patch("/{id}/restore", h.RestoreUser)
 			r.Delete("/{id}/permanent", h.PermanentlyDeleteUser)
 		})
 	})
@@ -105,14 +106,23 @@ func (h *UserHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 	limit, _ := strconv.Atoi(query.Get("limit"))
 	offset, _ := strconv.Atoi(query.Get("offset"))
 
-	// Get Users
-	users, err := h.service.GetAll(r.Context(), limit, offset)
+	filter := model.UserFilter{
+		Search:  query.Get("search"),
+		Trashed: query.Get("trashed"),
+		Limit:   limit,
+		Offset:  offset,
+	}
+
+	users, total, err := h.service.GetAll(r.Context(), filter)
 	if err != nil {
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to fetch users"})
 		return
 	}
 
-	respondJSON(w, http.StatusOK, users)
+	respondJSON(w, http.StatusOK, map[string]any{
+		"data":  users,
+		"total": total,
+	})
 }
 
 // Get User by ID

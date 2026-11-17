@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"uuid"
 
 	"github.com/AlifRJ/Go_Auth/app/model"
@@ -23,29 +24,82 @@ func NewPostgresUserRepository(db *pgxpool.Pool) model.UserRepository {
 	return &PostgresUserRepository{db: db}
 }
 
-func (r *PostgresUserRepository) GetAll(ctx context.Context, limit, offset int) ([]*model.User, error) {
-	query := `SELECT id, name, username, email, created_at, updated_at, deleted_at FROM users WHERE deleted_at IS NULL ORDER BY id DESC LIMIT $1 OFFSET $2`
+func (r *PostgresUserRepository) GetAll(ctx context.Context, filter model.UserFilter) ([]*model.User, int, error) {
+	var conditions []string
+	args := pgx.NamedArgs{
+		"limit":  filter.Limit,
+		"offset": filter.Offset,
+	}
 
-	rows, err := r.db.Query(ctx, query, limit, offset)
+	// Trashed filter
+	switch filter.Trashed {
+	case "only":
+		conditions = append(conditions, "deleted_at IS NOT NULL")
+	case "with":
+		// Include both active and soft-deleted users
+	default:
+		conditions = append(conditions, "deleted_at IS NULL")
+	}
+
+	// Search filter
+	if filter.Search != "" {
+		conditions = append(conditions, `(
+			id::text ILIKE @search OR 
+			name ILIKE @search OR 
+			username ILIKE @search OR 
+			email ILIKE @search
+		)`)
+		args["search"] = "%" + filter.Search + "%"
+	}
+
+	whereClause := ""
+	if len(conditions) > 0 {
+		whereClause = "WHERE " + strings.Join(conditions, " AND ")
+	}
+
+	query := fmt.Sprintf(`
+		SELECT 
+			id, name, username, email, created_at, updated_at, deleted_at,
+			COUNT(*) OVER() AS total_count
+		FROM users
+		%s
+		ORDER BY created_at DESC, id DESC
+		LIMIT @limit OFFSET @offset
+	`, whereClause)
+
+	rows, err := r.db.Query(ctx, query, args)
 	if err != nil {
-		return nil, fmt.Errorf("query GetAll failed: %w", err)
+		return nil, 0, fmt.Errorf("query GetAll failed: %w", err)
 	}
-	defer rows.Close()
 
-	users := make([]*model.User, 0)
-	for rows.Next() {
+	total := 0
+	users, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (*model.User, error) {
 		var u model.User
-		if err := rows.Scan(&u.ID, &u.Name, &u.Username, &u.Email, &u.CreatedAt, &u.UpdatedAt, &u.DeletedAt); err != nil {
-			return nil, fmt.Errorf("scan GetAll row failed: %w", err)
+		err := row.Scan(
+			&u.ID,
+			&u.Name,
+			&u.Username,
+			&u.Email,
+			&u.CreatedAt,
+			&u.UpdatedAt,
+			&u.DeletedAt,
+			&total,
+		)
+		return &u, err
+	})
+	if err != nil {
+		return nil, 0, fmt.Errorf("collect GetAll rows failed: %w", err)
+	}
+
+	// Fallback count if offset is past the last page (so total stays accurate)
+	if len(users) == 0 && filter.Offset > 0 {
+		countQuery := fmt.Sprintf(`SELECT COUNT(*) FROM users %s`, whereClause)
+		if err := r.db.QueryRow(ctx, countQuery, args).Scan(&total); err != nil {
+			return nil, 0, fmt.Errorf("fallback count GetAll failed: %w", err)
 		}
-		users = append(users, &u)
 	}
 
-	if err = rows.Err(); err != nil {
-		return nil, fmt.Errorf("rows iteration error: %w", err)
-	}
-
-	return users, nil
+	return users, total, nil
 }
 
 func (r *PostgresUserRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.User, error) {

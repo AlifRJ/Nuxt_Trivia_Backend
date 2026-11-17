@@ -12,13 +12,13 @@ import (
 )
 
 type cachedUserRepository struct {
-	rdb *redis.Client
-	dbRepo  model.UserRepository
-	cacheTTL   time.Duration
+	rdb      *redis.Client
+	dbRepo   model.UserRepository
+	cacheTTL time.Duration
 }
 
 func NewCachedUserRepository(rdb *redis.Client, dbRepo model.UserRepository, ttl time.Duration) model.UserRepository {
-	return &cachedUserRepository{rdb: rdb, dbRepo:	dbRepo, cacheTTL: ttl}
+	return &cachedUserRepository{rdb: rdb, dbRepo: dbRepo, cacheTTL: ttl}
 }
 
 // Key formatters
@@ -52,7 +52,7 @@ func (c *cachedUserRepository) GetByID(ctx context.Context, id uuid.UUID) (*mode
 	return user, nil
 }
 
-func (c *cachedUserRepository) GetMapByIDs(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error){
+func (c *cachedUserRepository) GetMapByIDs(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error) {
 	return c.dbRepo.GetMapByIDs(ctx, ids)
 }
 
@@ -68,8 +68,8 @@ func (c *cachedUserRepository) GetByUsername(ctx context.Context, username strin
 	return c.dbRepo.GetByUsername(ctx, username)
 }
 
-func (c *cachedUserRepository) GetAll(ctx context.Context, limit, offset int) ([]*model.User, error) {
-	return c.dbRepo.GetAll(ctx, limit, offset)
+func (c *cachedUserRepository) GetAll(ctx context.Context, filter model.UserFilter) ([]*model.User, int, error) {
+	return c.dbRepo.GetAll(ctx, filter)
 }
 
 func (c *cachedUserRepository) Create(ctx context.Context, user *model.User) error {
