@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 	"uuid"
 
@@ -17,6 +18,11 @@ type cachedScoreRepository struct {
 	cacheTTL time.Duration
 }
 
+type cachedScoresResult struct {
+	Scores []*model.Score `json:"scores"`
+	Total  int            `json:"total"`
+}
+
 func NewCachedScoreRepository(rdb *redis.Client, dbRepo model.ScoreRepository, ttl time.Duration) model.ScoreRepository {
 	return &cachedScoreRepository{
 		rdb:      rdb,
@@ -26,17 +32,28 @@ func NewCachedScoreRepository(rdb *redis.Client, dbRepo model.ScoreRepository, t
 }
 
 // Key formatters
-func (c *cachedScoreRepository) scoresAllKey(limit, offset int) string {
-	return fmt.Sprintf("scores:all:limit:%d:offset:%d", limit, offset)
+func (c *cachedScoreRepository) scoresAllKey(filter model.ScoreFilter) string {
+	// Normalize Search
+	search := strings.ToLower(strings.TrimSpace(filter.Search))
+
+	// Normalize empty Trashed so "" and "without" don't create duplicate cache entries
+	trashed := strings.ToLower(strings.TrimSpace(filter.Trashed))
+	if trashed == "" {
+		trashed = "default"
+	}
+
+	return fmt.Sprintf(
+		"scores:all:trashed:%s:search:%q:limit:%d:offset:%d",
+		trashed,
+		search,
+		filter.Limit,
+		filter.Offset,
+	)
 }
 
 func (c *cachedScoreRepository) userScoresKey(userID uuid.UUID) string {
 	return fmt.Sprintf("scores:user:%s", userID.String())
 }
-
-// func (c *cachedScoreRepository) userScoresPattern(userID uint) string {
-// 	return fmt.Sprintf("scores:user:%d*", userID)
-// }
 
 // Clear all paginated GetAll caches
 func (c *cachedScoreRepository) invalidateAllScoresCache(ctx context.Context) {
@@ -46,30 +63,34 @@ func (c *cachedScoreRepository) invalidateAllScoresCache(ctx context.Context) {
 	}
 }
 
-func (c *cachedScoreRepository) GetAll(ctx context.Context, limit, offset int) ([]*model.Score, error) {
-	key := c.scoresAllKey(limit, offset)
+func (c *cachedScoreRepository) GetAll(ctx context.Context, filter model.ScoreFilter) ([]*model.Score, int, error) {
+	key := c.scoresAllKey(filter)
 
 	// Fetch from Redis
 	val, err := c.rdb.Get(ctx, key).Result()
 	if err == nil {
-		var scores []*model.Score
-		if err := json.Unmarshal([]byte(val), &scores); err == nil {
-			return scores, nil // Cache Hit
+		var cached cachedScoresResult
+		if err := json.Unmarshal([]byte(val), &cached); err == nil {
+			return cached.Scores, cached.Total, nil // Cache Hit
 		}
 	}
 
 	// Cache Miss: Fetch from database
-	scores, err := c.dbRepo.GetAll(ctx, limit, offset)
+	scores, total, err := c.dbRepo.GetAll(ctx, filter)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	// Save to Redis
-	if data, err := json.Marshal(scores); err == nil {
+	payload := cachedScoresResult{
+		Scores: scores,
+		Total:  total,
+	}
+	if data, err := json.Marshal(payload); err == nil {
 		_ = c.rdb.Set(ctx, key, data, c.cacheTTL).Err()
 	}
 
-	return scores, nil
+	return scores, total, nil
 }
 
 func (c *cachedScoreRepository) GetByUser(ctx context.Context, userID uuid.UUID) ([]*model.Score, error) {

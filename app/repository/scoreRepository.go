@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"uuid"
 
 	"github.com/AlifRJ/Go_Auth/app/model"
@@ -19,44 +20,91 @@ type PostgresScoreRepository struct {
 	db *pgxpool.Pool
 }
 
-func NewPostgresScoreRepository(db *pgxpool.Pool) model.ScoreRepository{
- 	return &PostgresScoreRepository{db: db}
+func NewPostgresScoreRepository(db *pgxpool.Pool) model.ScoreRepository {
+	return &PostgresScoreRepository{db: db}
 }
 
-func (r *PostgresScoreRepository) GetAll(ctx context.Context, limit, offset int) ([]*model.Score, error) {
-	query := `SELECT id, user_id, score, category, difficulty, created_at, deleted_at FROM scores WHERE deleted_at IS NULL ORDER BY id DESC LIMIT $1 OFFSET $2`
-	
-	rows, err := r.db.Query(ctx, query, limit, offset)
+func (r *PostgresScoreRepository) GetAll(ctx context.Context, filter model.ScoreFilter) ([]*model.Score, int, error) {
+	var conditions []string
+	args := pgx.NamedArgs{
+		"limit":  filter.Limit,
+		"offset": filter.Offset,
+	}
+
+	// Trashed filter
+	switch filter.Trashed {
+	case "only":
+		conditions = append(conditions, "deleted_at IS NOT NULL")
+	case "with":
+		// Include both active and soft-deleted scores
+	default:
+		conditions = append(conditions, "deleted_at IS NULL")
+	}
+
+	// Search filter
+	if filter.Search != "" {
+		conditions = append(conditions, `(
+			id::text ILIKE @search OR 
+			category ILIKE @search OR 
+			difficulty ILIKE @search
+		)`)
+		args["search"] = "%" + filter.Search + "%"
+	}
+
+	whereClause := ""
+	if len(conditions) > 0 {
+		whereClause = "WHERE " + strings.Join(conditions, " AND ")
+	}
+
+	query := fmt.Sprintf(`
+		SELECT 
+			id, user_id, score, category, difficulty, created_at, deleted_at,
+			COUNT(*) OVER() AS total_count
+		FROM scores
+		%s
+		ORDER BY created_at DESC, id DESC
+		LIMIT @limit OFFSET @offset
+	`, whereClause)
+
+	rows, err := r.db.Query(ctx, query, args)
 	if err != nil {
-		return nil, fmt.Errorf("query GetAll failed: %w", err)
-	} 
+		return nil, 0, fmt.Errorf("query GetAll failed: %w", err)
+	}
 	defer rows.Close()
 
-	capacity := limit
-	if capacity <= 0 {
-		capacity = 0
-	}
-	scores := make([]*model.Score, 0, capacity)
-	
-	for rows.Next() {
+	total := 0
+	scores, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (*model.Score, error) {
 		var u model.Score
-		if err := rows.Scan(&u.ID, &u.UserID, &u.Score, &u.Category, &u.Difficulty, &u.CreatedAt, &u.DeletedAt); err != nil {
-			return nil, fmt.Errorf("scan GetAll row failed: %w", err)
+		err := row.Scan(
+			&u.ID,
+			&u.UserID,
+			&u.Score,
+			&u.Category,
+			&u.Difficulty,
+			&u.CreatedAt,
+			&u.DeletedAt,
+			&total,
+		)
+		return &u, err
+	})
+	if err != nil {
+		return nil, 0, fmt.Errorf("collect GetAll rows failed: %w", err)
+	}
+
+	// Fallback count if offset is past the last page (so total stays accurate)
+	if len(scores) == 0 && filter.Offset > 0 {
+		countQuery := fmt.Sprintf(`SELECT COUNT(*) FROM scores %s`, whereClause)
+		if err := r.db.QueryRow(ctx, countQuery, args).Scan(&total); err != nil {
+			return nil, 0, fmt.Errorf("fallback count GetAll failed: %w", err)
 		}
-		scores = append(scores, &u)
 	}
 
-	if err = rows.Err(); err != nil {
-		return nil, fmt.Errorf("rows iteration error: %w", err)
-	}
-
-	return scores, nil
+	return scores, total, nil
 }
 
 func (r *PostgresScoreRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.Score, error) {
 	query := `SELECT id, user_id, score, category, difficulty, created_at, deleted_at FROM scores WHERE deleted_at IS NULL AND id = $1`
 
-	
 	var score model.Score
 	err := r.db.QueryRow(ctx, query, id).Scan(&score.ID, &score.UserID, &score.Score, &score.Category, &score.Difficulty, &score.CreatedAt, &score.DeletedAt)
 	if err != nil {
@@ -65,17 +113,17 @@ func (r *PostgresScoreRepository) GetByID(ctx context.Context, id uuid.UUID) (*m
 		}
 		return nil, err
 	}
-	
+
 	return &score, nil
 }
 
 func (r *PostgresScoreRepository) GetByUser(ctx context.Context, userID uuid.UUID) ([]*model.Score, error) {
 	query := `SELECT id, user_id, score, category, difficulty, created_at, deleted_at FROM scores WHERE deleted_at IS NULL AND user_id = $1 ORDER BY created_at DESC`
-	
+
 	rows, err := r.db.Query(ctx, query, userID)
 	if err != nil {
 		return nil, fmt.Errorf("query GetByUser failed: %w", err)
-	} 
+	}
 	defer rows.Close()
 
 	scores := make([]*model.Score, 0)
@@ -96,41 +144,41 @@ func (r *PostgresScoreRepository) GetByUser(ctx context.Context, userID uuid.UUI
 
 func (r *PostgresScoreRepository) Create(ctx context.Context, score *model.Score) error {
 	query := `INSERT INTO scores (user_id, score, category, difficulty) VALUES ($1, $2, $3, $4) RETURNING id, created_at`
-	
+
 	err := r.db.QueryRow(ctx, query, score.UserID, score.Score, score.Category, score.Difficulty).Scan(&score.ID, &score.CreatedAt)
 	if err != nil {
 		return fmt.Errorf("create score failed: %w", err)
 	}
-	
+
 	return nil
 }
 
 func (r *PostgresScoreRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	query := `UPDATE scores SET deleted_at = CURRENT_TIMESTAMP where id = $1 AND deleted_at IS NULL`
-	
+
 	tag, err := r.db.Exec(ctx, query, id)
 	if err != nil {
 		return fmt.Errorf("delete score failed: %w", err)
 	}
 
-	if tag.RowsAffected() == 0{
+	if tag.RowsAffected() == 0 {
 		return ErrScoreNotFound
 	}
-	
+
 	return nil
 }
 
 func (r *PostgresScoreRepository) PermanentDelete(ctx context.Context, id uuid.UUID) error {
 	query := `DELETE FROM scores WHERE id = $1`
-	
+
 	commandTag, err := r.db.Exec(ctx, query, id)
 	if err != nil {
 		return fmt.Errorf("permanent delete score failed: %w", err)
 	}
-	
+
 	if commandTag.RowsAffected() == 0 {
 		return ErrScoreNotFound
 	}
-	
+
 	return nil
 }

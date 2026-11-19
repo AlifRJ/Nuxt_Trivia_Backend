@@ -103,8 +103,24 @@ func (h *UserHandler) RegisterRoutes(r chi.Router) {
 func (h *UserHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 
-	limit, _ := strconv.Atoi(query.Get("limit"))
-	offset, _ := strconv.Atoi(query.Get("offset"))
+	var limit, offset int
+	var err error
+
+	if rawLimit := query.Get("limit"); rawLimit != "" {
+		limit, err = strconv.Atoi(rawLimit)
+		if err != nil {
+			respondJSON(w, http.StatusBadRequest, map[string]string{"error": "limit must be a valid integer"})
+			return
+		}
+	}
+
+	if rawOffset := query.Get("offset"); rawOffset != "" {
+		offset, err = strconv.Atoi(rawOffset)
+		if err != nil {
+			respondJSON(w, http.StatusBadRequest, map[string]string{"error": "offset must be a valid integer"})
+			return
+		}
+	}
 
 	filter := model.UserFilter{
 		Search:  query.Get("search"),

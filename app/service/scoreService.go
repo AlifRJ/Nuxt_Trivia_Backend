@@ -16,27 +16,38 @@ var (
 )
 
 type ScoreService struct {
-	repo model.ScoreRepository
+	repo               model.ScoreRepository
 	leaderboardService *LeaderboardService
 }
 
-func NewScoreService(repo model.ScoreRepository, leaderboardService *LeaderboardService) *ScoreService{
+func NewScoreService(repo model.ScoreRepository, leaderboardService *LeaderboardService) *ScoreService {
 	return &ScoreService{repo: repo, leaderboardService: leaderboardService}
 }
 
-func (s *ScoreService) GetAll(ctx context.Context, limit, offset int) ([]*model.Score, error) {
-	if limit <= 0 {
-		limit = 10 
+func (s *ScoreService) GetAll(ctx context.Context, filter model.ScoreFilter) ([]*model.Score, int, error) {
+	if filter.Limit <= 0 {
+		filter.Limit = defaultUserLimit
+	} else if filter.Limit > maxUserLimit {
+		filter.Limit = maxUserLimit
 	}
 
-	if limit > 100 {
-		limit = 100
+	if filter.Offset < 0 {
+		filter.Offset = 0
 	}
 
-	if offset < 0 {
-		offset = 0
+	filter.Search = strings.TrimSpace(filter.Search)
+	if len(filter.Search) > 100 {
+		filter.Search = filter.Search[:100]
 	}
-	return s.repo.GetAll(ctx, limit, offset)
+
+	switch strings.ToLower(strings.TrimSpace(filter.Trashed)) {
+	case "only", "with":
+		filter.Trashed = strings.ToLower(strings.TrimSpace(filter.Trashed))
+	default:
+		filter.Trashed = ""
+	}
+
+	return s.repo.GetAll(ctx, filter)
 }
 
 func (s *ScoreService) GetByUser(ctx context.Context, userID uuid.UUID) ([]*model.Score, error) {
@@ -46,19 +57,19 @@ func (s *ScoreService) GetByUser(ctx context.Context, userID uuid.UUID) ([]*mode
 func (s *ScoreService) RegisterScore(ctx context.Context, userID uuid.UUID, scoreVal uint, category, difficulty string) (*model.Score, error) {
 	category = strings.ToLower(strings.TrimSpace(category))
 	difficulty = strings.ToLower(strings.TrimSpace(difficulty))
-	
+
 	// Validate empty request
-	if  category == "" || difficulty == "" {
+	if category == "" || difficulty == "" {
 		return nil, ErrInvalidInput
 	}
-	
+
 	score := &model.Score{
-		UserID: userID, 
-		Score: scoreVal, 
-		Category: category, 
+		UserID:     userID,
+		Score:      scoreVal,
+		Category:   category,
 		Difficulty: difficulty,
 	}
-	
+
 	if err := s.repo.Create(ctx, score); err != nil {
 		return nil, fmt.Errorf("failed to register score: %w", err)
 	}

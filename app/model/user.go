@@ -19,7 +19,7 @@ type User struct {
 
 type UserFilter struct {
 	Search  string
-	Trashed string // "", "with", or "only"
+	Trashed string
 	Limit   int
 	Offset  int
 }

@@ -100,16 +100,42 @@ func (h *ScoreHandler) RegisterRoutes(r chi.Router) {
 func (h *ScoreHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 
-	limit, _ := strconv.Atoi(query.Get("limit"))
-	offset, _ := strconv.Atoi(query.Get("offset"))
+	var limit, offset int
+	var err error
 
-	scores, err := h.service.GetAll(r.Context(), limit, offset)
+	if rawLimit := query.Get("limit"); rawLimit != "" {
+		limit, err = strconv.Atoi(rawLimit)
+		if err != nil {
+			respondJSON(w, http.StatusBadRequest, map[string]string{"error": "limit must be a valid integer"})
+			return
+		}
+	}
+
+	if rawOffset := query.Get("offset"); rawOffset != "" {
+		offset, err = strconv.Atoi(rawOffset)
+		if err != nil {
+			respondJSON(w, http.StatusBadRequest, map[string]string{"error": "offset must be a valid integer"})
+			return
+		}
+	}
+
+	filter := model.ScoreFilter{
+		Search:  query.Get("search"),
+		Trashed: query.Get("trashed"),
+		Limit:   limit,
+		Offset:  offset,
+	}
+
+	scores, total, err := h.service.GetAll(r.Context(), filter)
 	if err != nil {
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to fetch scores"})
 		return
 	}
 
-	respondJSON(w, http.StatusOK, scores)
+	respondJSON(w, http.StatusOK, map[string]any{
+		"data":  scores,
+		"total": total,
+	})
 }
 
 // GetByUser fetches all scores created by a specific user
