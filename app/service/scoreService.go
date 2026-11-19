@@ -24,7 +24,7 @@ func NewScoreService(repo model.ScoreRepository, leaderboardService *Leaderboard
 	return &ScoreService{repo: repo, leaderboardService: leaderboardService}
 }
 
-func (s *ScoreService) GetAll(ctx context.Context, filter model.ScoreFilter) ([]*model.Score, int, error) {
+func (s *ScoreService) GetAll(ctx context.Context, filter model.ScoreFilter) ([]*model.ScoreWithUsername, int, error) {
 	if filter.Limit <= 0 {
 		filter.Limit = defaultUserLimit
 	} else if filter.Limit > maxUserLimit {

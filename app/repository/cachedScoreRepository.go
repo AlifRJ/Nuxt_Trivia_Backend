@@ -19,8 +19,8 @@ type cachedScoreRepository struct {
 }
 
 type cachedScoresResult struct {
-	Scores []*model.Score `json:"scores"`
-	Total  int            `json:"total"`
+	Scores []*model.ScoreWithUsername `json:"scores"`
+	Total  int                        `json:"total"`
 }
 
 func NewCachedScoreRepository(rdb *redis.Client, dbRepo model.ScoreRepository, ttl time.Duration) model.ScoreRepository {
@@ -63,7 +63,7 @@ func (c *cachedScoreRepository) invalidateAllScoresCache(ctx context.Context) {
 	}
 }
 
-func (c *cachedScoreRepository) GetAll(ctx context.Context, filter model.ScoreFilter) ([]*model.Score, int, error) {
+func (c *cachedScoreRepository) GetAll(ctx context.Context, filter model.ScoreFilter) ([]*model.ScoreWithUsername, int, error) {
 	key := c.scoresAllKey(filter)
 
 	// Fetch from Redis

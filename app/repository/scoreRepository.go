@@ -24,7 +24,7 @@ func NewPostgresScoreRepository(db *pgxpool.Pool) model.ScoreRepository {
 	return &PostgresScoreRepository{db: db}
 }
 
-func (r *PostgresScoreRepository) GetAll(ctx context.Context, filter model.ScoreFilter) ([]*model.Score, int, error) {
+func (r *PostgresScoreRepository) GetAll(ctx context.Context, filter model.ScoreFilter) ([]*model.ScoreWithUsername, int, error) {
 	var conditions []string
 	args := pgx.NamedArgs{
 		"limit":  filter.Limit,
@@ -34,19 +34,20 @@ func (r *PostgresScoreRepository) GetAll(ctx context.Context, filter model.Score
 	// Trashed filter
 	switch filter.Trashed {
 	case "only":
-		conditions = append(conditions, "deleted_at IS NOT NULL")
+		conditions = append(conditions, "scores.deleted_at IS NOT NULL")
 	case "with":
 		// Include both active and soft-deleted scores
 	default:
-		conditions = append(conditions, "deleted_at IS NULL")
+		conditions = append(conditions, "scores.deleted_at IS NULL")
 	}
 
 	// Search filter
 	if filter.Search != "" {
 		conditions = append(conditions, `(
-			id::text ILIKE @search OR 
-			category ILIKE @search OR 
-			difficulty ILIKE @search
+			scores.id::text ILIKE @search OR 
+			users.username ILIKE @search OR
+			scores.category ILIKE @search OR 
+			scores.difficulty ILIKE @search
 		)`)
 		args["search"] = "%" + filter.Search + "%"
 	}
@@ -58,11 +59,12 @@ func (r *PostgresScoreRepository) GetAll(ctx context.Context, filter model.Score
 
 	query := fmt.Sprintf(`
 		SELECT 
-			id, user_id, score, category, difficulty, created_at, deleted_at,
+			scores.id, scores.user_id, users.username, scores.score, scores.category, scores.difficulty, scores.created_at, scores.deleted_at,
 			COUNT(*) OVER() AS total_count
 		FROM scores
+		LEFT JOIN users ON scores.user_id = users.id
 		%s
-		ORDER BY created_at DESC, id DESC
+		ORDER BY scores.created_at DESC, scores.id DESC
 		LIMIT @limit OFFSET @offset
 	`, whereClause)
 
@@ -73,19 +75,20 @@ func (r *PostgresScoreRepository) GetAll(ctx context.Context, filter model.Score
 	defer rows.Close()
 
 	total := 0
-	scores, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (*model.Score, error) {
-		var u model.Score
+	scores, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (*model.ScoreWithUsername, error) {
+		var s model.ScoreWithUsername
 		err := row.Scan(
-			&u.ID,
-			&u.UserID,
-			&u.Score,
-			&u.Category,
-			&u.Difficulty,
-			&u.CreatedAt,
-			&u.DeletedAt,
+			&s.ID,
+			&s.UserID,
+			&s.Username,
+			&s.Score,
+			&s.Category,
+			&s.Difficulty,
+			&s.CreatedAt,
+			&s.DeletedAt,
 			&total,
 		)
-		return &u, err
+		return &s, err
 	})
 	if err != nil {
 		return nil, 0, fmt.Errorf("collect GetAll rows failed: %w", err)
