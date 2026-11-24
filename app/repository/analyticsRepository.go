@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"uuid"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -13,6 +14,8 @@ type AnalyticsRepository interface {
 	GetCategoryStats(ctx context.Context, limit int) ([]CategoryStat, error)
 	GetDifficultyStats(ctx context.Context) ([]DifficultyStat, error)
 	GetDailyTrends(ctx context.Context, days int) ([]DailyTrendStat, error)
+	GetScoreDistributionStats(ctx context.Context) ([]ScoreDistributionStat, error)
+	GetTopPlayers(ctx context.Context) ([]TopPlayerList, error)
 }
 
 type analyticsRepo struct {
@@ -40,6 +43,18 @@ type DailyTrendStat struct {
 	Date        string  `json:"date"`
 	GamesPlayed int64   `json:"games_played"`
 	AvgScore    float64 `json:"avg_score"`
+}
+
+type ScoreDistributionStat struct {
+	Range string `json:"range"`
+	Count int    `json:"count"`
+}
+
+type TopPlayerList struct {
+	Id          uuid.UUID `json:"id"`
+	Username    string    `json:"username"`
+	GamesPlayed int64     `json:"games_played"`
+	TotalScore  int64     `json:"total_score"`
 }
 
 func (r *analyticsRepo) GetExecutiveKPIs(ctx context.Context) (int64, int64, float64, error) {
@@ -154,4 +169,73 @@ func (r *analyticsRepo) GetDailyTrends(ctx context.Context, days int) ([]DailyTr
 	}
 
 	return stats, rows.Err()
+}
+
+func (r *analyticsRepo) GetScoreDistributionStats(ctx context.Context) ([]ScoreDistributionStat, error) {
+	query := `
+		SELECT
+			CASE 
+				WHEN score <= 50 THEN '0-50'
+				ELSE CONCAT(
+					(FLOOR((score - 1) / 50.0) * 50) + 1, 
+					'-', 
+					(FLOOR((score - 1) / 50.0) + 1) * 50
+				)
+			END AS "range",
+			COUNT(*) AS count
+		FROM scores
+		WHERE deleted_at IS NULL AND score IS NOT NULL 
+		GROUP BY "range"
+		ORDER BY MIN(score) ASC;
+	`
+	rows, err := r.db.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("repository: failed to query score distribution: %w", err)
+	}
+	defer rows.Close()
+
+	stats := make([]ScoreDistributionStat, 0)
+	for rows.Next() {
+		var sd ScoreDistributionStat
+		if err := rows.Scan(&sd.Range, &sd.Count); err != nil {
+			return nil, fmt.Errorf("repository: failed scanning score distribution row: %w", err)
+		}
+		stats = append(stats, sd)
+	}
+
+	return stats, rows.Err()
+}
+
+func (r *analyticsRepo) GetTopPlayers(ctx context.Context) ([]TopPlayerList, error) {
+	query := `
+		SELECT 
+			users.id AS id,
+			users.username AS username,
+			COUNT(scores.id) AS games_played,
+			COALESCE(SUM(scores.score), 0) AS total_score
+		FROM scores
+		INNER JOIN users ON scores.user_id = users.id
+		WHERE users.deleted_at is NULL 
+			AND scores.deleted_at is NULL
+		GROUP BY users.id, users.username
+		ORDER BY total_score DESC
+		LIMIT 10;
+	`
+
+	rows, err := r.db.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("repository: failed to query top players: %w", err)
+	}
+	defer rows.Close()
+
+	players := make([]TopPlayerList, 0)
+	for rows.Next() {
+		var tp TopPlayerList
+		if err := rows.Scan(&tp.Id, &tp.Username, &tp.GamesPlayed, &tp.TotalScore); err != nil {
+			return nil, fmt.Errorf("repository: failed scanning top players row: %w", err)
+		}
+		players = append(players, tp)
+	}
+
+	return players, rows.Err()
 }

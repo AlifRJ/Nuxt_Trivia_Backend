@@ -29,10 +29,12 @@ type ExecutiveKPIs struct {
 }
 
 type DashboardAnalyticsPayload struct {
-	KPIs         ExecutiveKPIs               `json:"kpis"`
-	Categories   []repository.CategoryStat   `json:"categories"`
-	Difficulties []repository.DifficultyStat `json:"difficulties"`
-	DailyTrends  []repository.DailyTrendStat `json:"daily_trends"`
+	KPIs              ExecutiveKPIs                      `json:"kpis"`
+	Categories        []repository.CategoryStat          `json:"categories"`
+	Difficulties      []repository.DifficultyStat        `json:"difficulties"`
+	DailyTrends       []repository.DailyTrendStat        `json:"daily_trends"`
+	ScoreDistribution []repository.ScoreDistributionStat `json:"score_distribution"`
+	TopPlayers        []repository.TopPlayerList         `json:"top_players"`
 }
 
 func (s *analyticsService) GetDashboardAnalytics(ctx context.Context) (*DashboardAnalyticsPayload, error) {
@@ -43,12 +45,14 @@ func (s *analyticsService) GetDashboardAnalytics(ctx context.Context) (*Dashboar
 	g, ctx := errgroup.WithContext(ctx)
 
 	var (
-		totalGames   int64
-		totalPlayers int64
-		avgScore     float64
-		categories   []repository.CategoryStat
-		difficulties []repository.DifficultyStat
-		dailyTrends  []repository.DailyTrendStat
+		totalGames        int64
+		totalPlayers      int64
+		avgScore          float64
+		categories        []repository.CategoryStat
+		difficulties      []repository.DifficultyStat
+		dailyTrends       []repository.DailyTrendStat
+		scoreDistribution []repository.ScoreDistributionStat
+		topPlayers        []repository.TopPlayerList
 	)
 
 	// 1. Concurrent Fetch: Executive KPIs
@@ -91,7 +95,27 @@ func (s *analyticsService) GetDashboardAnalytics(ctx context.Context) (*Dashboar
 		return nil
 	})
 
-	// Wait for all 4 queries to finish or fail
+	// 5. Score Distribution
+	g.Go(func() error {
+		var err error
+		scoreDistribution, err = s.repo.GetScoreDistributionStats(ctx)
+		if err != nil {
+			return fmt.Errorf("score_distributions: %w", err)
+		}
+		return nil
+	})
+
+	// 6. Top Players
+	g.Go(func() error {
+		var err error
+		topPlayers, err = s.repo.GetTopPlayers(ctx)
+		if err != nil {
+			return fmt.Errorf("top_players: %w", err)
+		}
+		return nil
+	})
+
+	// Wait for all 6 queries to finish or fail
 	if err := g.Wait(); err != nil {
 		return nil, fmt.Errorf("service: %w", err)
 	}
@@ -102,8 +126,10 @@ func (s *analyticsService) GetDashboardAnalytics(ctx context.Context) (*Dashboar
 			TotalPlayers: totalPlayers,
 			AvgScore:     avgScore,
 		},
-		Categories:   categories,
-		Difficulties: difficulties,
-		DailyTrends:  dailyTrends,
+		Categories:        categories,
+		Difficulties:      difficulties,
+		DailyTrends:       dailyTrends,
+		ScoreDistribution: scoreDistribution,
+		TopPlayers:        topPlayers,
 	}, nil
 }
