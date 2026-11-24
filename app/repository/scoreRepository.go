@@ -112,7 +112,22 @@ func (r *PostgresScoreRepository) GetByID(ctx context.Context, id uuid.UUID) (*m
 	err := r.db.QueryRow(ctx, query, id).Scan(&score.ID, &score.UserID, &score.Score, &score.Category, &score.Difficulty, &score.CreatedAt, &score.DeletedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, ErrUserNotFound
+			return nil, ErrScoreNotFound
+		}
+		return nil, err
+	}
+
+	return &score, nil
+}
+
+func (r *PostgresScoreRepository) GetByIDUnscoped(ctx context.Context, id uuid.UUID) (*model.Score, error) {
+	query := `SELECT id, user_id, score, category, difficulty, created_at, deleted_at FROM scores WHERE id = $1`
+
+	var score model.Score
+	err := r.db.QueryRow(ctx, query, id).Scan(&score.ID, &score.UserID, &score.Score, &score.Category, &score.Difficulty, &score.CreatedAt, &score.DeletedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrScoreNotFound
 		}
 		return nil, err
 	}
@@ -171,6 +186,21 @@ func (r *PostgresScoreRepository) Delete(ctx context.Context, id uuid.UUID) erro
 	return nil
 }
 
+func (r *PostgresScoreRepository) Restore(ctx context.Context, id uuid.UUID) error {
+	query := `UPDATE scores SET deleted_at = NULL WHERE id = $1 AND deleted_at IS NOT NULL`
+
+	tag, err := r.db.Exec(ctx, query, id)
+	if err != nil {
+		return fmt.Errorf("restore score failed: %w", err)
+	}
+
+	if tag.RowsAffected() == 0 {
+		return ErrScoreNotFound
+	}
+
+	return nil
+}
+
 func (r *PostgresScoreRepository) PermanentDelete(ctx context.Context, id uuid.UUID) error {
 	query := `DELETE FROM scores WHERE id = $1`
 
@@ -184,4 +214,28 @@ func (r *PostgresScoreRepository) PermanentDelete(ctx context.Context, id uuid.U
 	}
 
 	return nil
+}
+
+// Helper for leaderboard sync
+func (r *PostgresScoreRepository) GetHighestActiveScore(ctx context.Context, userID uuid.UUID, category string) (float64, bool, error) {
+	const query = `
+		SELECT score
+		FROM scores
+		WHERE user_id = $1
+		  AND category = $2
+		  AND deleted_at IS NULL
+		ORDER BY score DESC
+		LIMIT 1
+	`
+
+	var score float64
+	err := r.db.QueryRow(ctx, query, userID, category).Scan(&score)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return 0, false, nil
+		}
+		return 0, false, err
+	}
+
+	return score, true, nil
 }

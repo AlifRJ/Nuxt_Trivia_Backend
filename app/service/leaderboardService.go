@@ -48,6 +48,21 @@ func (s *LeaderboardService) SubmitScore(ctx context.Context, category string, u
 	return nil
 }
 
+// SetScore unconditionally sets the user's ZSET score (allowing decreases during rollbacks/deletions).
+func (s *LeaderboardService) SetScore(ctx context.Context, category string, userID uuid.UUID, score float64) error {
+	key := s.leaderboardKey(category)
+	member := userID.String()
+
+	err := s.rdb.ZAdd(ctx, key, redis.Z{
+		Score:  score,
+		Member: member,
+	}).Err()
+	if err != nil {
+		return fmt.Errorf("failed to set score on leaderboard: %w", err)
+	}
+	return nil
+}
+
 // GetTopScores fetches top N players and resolves usernames in a single query
 func (s *LeaderboardService) GetTopScores(ctx context.Context, category string, limit int64) ([]LeaderboardUser, error) {
 	if limit <= 0 {

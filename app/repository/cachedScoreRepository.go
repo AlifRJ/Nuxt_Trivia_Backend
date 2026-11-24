@@ -145,6 +145,15 @@ func (c *cachedScoreRepository) GetByID(ctx context.Context, userID uuid.UUID) (
 	return score, nil
 }
 
+func (c *cachedScoreRepository) GetByIDUnscoped(ctx context.Context, userID uuid.UUID) (*model.Score, error) {
+	score, err := c.dbRepo.GetByIDUnscoped(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	return score, nil
+}
+
 func (c *cachedScoreRepository) Create(ctx context.Context, score *model.Score) error {
 	if err := c.dbRepo.Create(ctx, score); err != nil {
 		return err
@@ -169,6 +178,18 @@ func (c *cachedScoreRepository) Delete(ctx context.Context, id uuid.UUID) error 
 	return nil
 }
 
+func (c *cachedScoreRepository) Restore(ctx context.Context, id uuid.UUID) error {
+	if err := c.dbRepo.Restore(ctx, id); err != nil {
+		return err
+	}
+
+	// Invalidate cached lists across DB and user caches
+	c.invalidateAllScoresCache(ctx)
+	c.invalidateUserScoresPattern(ctx)
+
+	return nil
+}
+
 func (c *cachedScoreRepository) PermanentDelete(ctx context.Context, id uuid.UUID) error {
 	if err := c.dbRepo.PermanentDelete(ctx, id); err != nil {
 		return err
@@ -179,6 +200,10 @@ func (c *cachedScoreRepository) PermanentDelete(ctx context.Context, id uuid.UUI
 	c.invalidateUserScoresPattern(ctx)
 
 	return nil
+}
+
+func (c *cachedScoreRepository) GetHighestActiveScore(ctx context.Context, userID uuid.UUID, category string) (float64, bool, error) {
+	return c.dbRepo.GetHighestActiveScore(ctx, userID, category)
 }
 
 // Invalidate user score keys when a score ID is mutated without knowing UserID

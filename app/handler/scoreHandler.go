@@ -91,6 +91,7 @@ func (h *ScoreHandler) RegisterRoutes(r chi.Router) {
 			r.Use(httprate.LimitBy(3, time.Minute, GetIPRateKey, httprate.WithLimitHandler(middleware.WriteRateLimitError)))
 
 			r.Delete("/{id}", h.DeleteScore)
+			r.Patch("/{id}/restore", h.RestoreScore)
 			r.Delete("/{id}/permanent", h.PermanentlyDeleteScore)
 		})
 	})
@@ -206,6 +207,26 @@ func (h *ScoreHandler) DeleteScore(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.service.DeleteScore(r.Context(), id); err != nil {
+		if errors.Is(err, repository.ErrScoreNotFound) {
+			respondJSON(w, http.StatusNotFound, map[string]string{"error": "Score not found"})
+			return
+		}
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// RestorScore performs a restore on a soft deleted score record
+func (h *ScoreHandler) RestoreScore(w http.ResponseWriter, r *http.Request) {
+	id, err := parseUUIDParam(r, "id")
+	if err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid ID parameter"})
+		return
+	}
+
+	if err := h.service.RestoreScore(r.Context(), id); err != nil {
 		if errors.Is(err, repository.ErrScoreNotFound) {
 			respondJSON(w, http.StatusNotFound, map[string]string{"error": "Score not found"})
 			return

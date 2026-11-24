@@ -37,8 +37,11 @@ type ScoreFilter struct {
 type ScoreRepository interface {
 	GetAll(ctx context.Context, filter ScoreFilter) ([]*ScoreWithUsername, int, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*Score, error)
+	GetByIDUnscoped(ctx context.Context, id uuid.UUID) (*Score, error)
 	GetByUser(ctx context.Context, userID uuid.UUID) ([]*Score, error)
 	Create(ctx context.Context, score *Score) error
 	Delete(ctx context.Context, id uuid.UUID) error
+	Restore(ctx context.Context, id uuid.UUID) error
 	PermanentDelete(ctx context.Context, id uuid.UUID) error
+	GetHighestActiveScore(ctx context.Context, userID uuid.UUID, category string) (float64, bool, error)
 }

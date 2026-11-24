@@ -93,12 +93,21 @@ func (s *ScoreService) DeleteScore(ctx context.Context, id uuid.UUID) error {
 		return err
 	}
 
-	if s.leaderboardService != nil && scoreModel != nil {
-		if err := s.leaderboardService.RemoveUser(ctx, scoreModel.Category, scoreModel.UserID); err != nil {
-			log.Printf("[WARN] Failed to remove user %d from leaderboard ZSET: %v", scoreModel.UserID, err)
-		}
+	s.syncLeaderboardScore(ctx, scoreModel.Category, scoreModel.UserID)
+	return nil
+}
+
+func (s *ScoreService) RestoreScore(ctx context.Context, id uuid.UUID) error {
+	scoreModel, err := s.repo.GetByIDUnscoped(ctx, id)
+	if err != nil {
+		return err
 	}
 
+	if err := s.repo.Restore(ctx, id); err != nil {
+		return err
+	}
+
+	s.syncLeaderboardScore(ctx, scoreModel.Category, scoreModel.UserID)
 	return nil
 }
 
@@ -107,4 +116,27 @@ func (s *ScoreService) DeleteScorePermanently(ctx context.Context, id uuid.UUID)
 		return err
 	}
 	return nil
+}
+
+func (s *ScoreService) syncLeaderboardScore(ctx context.Context, category string, userID uuid.UUID) {
+	if s.leaderboardService == nil {
+		return
+	}
+
+	bestScore, hasActiveScores, err := s.repo.GetHighestActiveScore(ctx, userID, category)
+	if err != nil {
+		log.Printf("[WARN] Failed to fetch highest active score for user %s: %v", userID, err)
+		return
+	}
+
+	if !hasActiveScores {
+		if err := s.leaderboardService.RemoveUser(ctx, category, userID); err != nil {
+			log.Printf("[WARN] Failed to remove user %s from leaderboard ZSET: %v", userID, err)
+		}
+		return
+	}
+
+	if err := s.leaderboardService.SetScore(ctx, category, userID, bestScore); err != nil {
+		log.Printf("[WARN] Failed to sync user %s score (%v) to leaderboard ZSET: %v", userID, bestScore, err)
+	}
 }
