@@ -96,6 +96,16 @@ func (c *cachedUserRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
+func (c *cachedUserRepository) Restore(ctx context.Context, id uuid.UUID) error {
+	if err := c.dbRepo.Restore(ctx, id); err != nil {
+		return err
+	}
+
+	// Invalidate Cache
+	_ = c.rdb.Del(ctx, c.userKey(id)).Err()
+	return nil
+}
+
 func (c *cachedUserRepository) PermanentDelete(ctx context.Context, id uuid.UUID) error {
 	if err := c.dbRepo.PermanentDelete(ctx, id); err != nil {
 		return err

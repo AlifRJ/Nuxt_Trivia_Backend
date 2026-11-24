@@ -9,11 +9,15 @@ import (
 
 	"github.com/AlifRJ/Go_Auth/app/model"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 var (
-	ErrUserNotFound = errors.New("user not found")
+	ErrUserNotFound  = errors.New("user not found")
+	ErrEmailTaken    = errors.New("email already taken")
+	ErrUsernameTaken = errors.New("username already taken")
+	ErrConflict      = errors.New("email or username already taken")
 )
 
 type PostgresUserRepository struct {
@@ -243,10 +247,36 @@ func (r *PostgresUserRepository) Update(ctx context.Context, user *model.User) e
 }
 
 func (r *PostgresUserRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	query := `UPDATE users SET deleted_at = CURRENT_TIMESTAMP where id = $1 AND deleted_at IS NULL`
+	query := `UPDATE users SET deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP where id = $1 AND deleted_at IS NULL`
 
 	tag, err := r.db.Exec(ctx, query, id)
 	if err != nil {
+		return err
+	}
+
+	if tag.RowsAffected() == 0 {
+		return ErrUserNotFound
+	}
+
+	return nil
+}
+
+func (r *PostgresUserRepository) Restore(ctx context.Context, id uuid.UUID) error {
+	query := `UPDATE users SET deleted_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND deleted_at IS NOT NULL`
+
+	tag, err := r.db.Exec(ctx, query, id)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			switch pgErr.ConstraintName {
+			case "idx_users_email":
+				return ErrEmailTaken
+			case "idx_users_username":
+				return ErrUsernameTaken
+			default:
+				return ErrConflict
+			}
+		}
 		return err
 	}
 

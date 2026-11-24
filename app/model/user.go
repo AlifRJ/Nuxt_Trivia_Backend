@@ -34,5 +34,6 @@ type UserRepository interface {
 	Create(ctx context.Context, user *User) error
 	Update(ctx context.Context, user *User) error
 	Delete(ctx context.Context, id uuid.UUID) error
+	Restore(ctx context.Context, id uuid.UUID) error
 	PermanentDelete(ctx context.Context, id uuid.UUID) error
 }

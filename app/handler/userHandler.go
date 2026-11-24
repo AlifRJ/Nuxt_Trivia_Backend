@@ -93,7 +93,7 @@ func (h *UserHandler) RegisterRoutes(r chi.Router) {
 			r.Use(httprate.LimitBy(3, time.Minute, GetIPRateKey, httprate.WithLimitHandler(middleware.WriteRateLimitError)))
 
 			r.Delete("/{id}", h.DeleteUser)
-			// r.Patch("/{id}/restore", h.RestoreUser)
+			r.Patch("/{id}/restore", h.RestoreUser)
 			r.Delete("/{id}/permanent", h.PermanentlyDeleteUser)
 		})
 	})
@@ -228,6 +228,26 @@ func (h *UserHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.service.DeleteUser(r.Context(), id); err != nil {
+		if errors.Is(err, repository.ErrUserNotFound) {
+			respondJSON(w, http.StatusNotFound, map[string]string{"error": "User not found"})
+			return
+		}
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// Restore User
+func (h *UserHandler) RestoreUser(w http.ResponseWriter, r *http.Request) {
+	id, err := parseUUIDParam(r, "id")
+	if err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid ID parameter"})
+		return
+	}
+
+	if err := h.service.RestoreUser(r.Context(), id); err != nil {
 		if errors.Is(err, repository.ErrUserNotFound) {
 			respondJSON(w, http.StatusNotFound, map[string]string{"error": "User not found"})
 			return

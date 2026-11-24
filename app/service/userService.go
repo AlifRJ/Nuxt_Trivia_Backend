@@ -146,6 +146,10 @@ func (s *UserService) DeleteUser(ctx context.Context, id uuid.UUID) error {
 	return s.repo.Delete(ctx, id)
 }
 
+func (s *UserService) RestoreUser(ctx context.Context, id uuid.UUID) error {
+	return s.repo.Restore(ctx, id)
+}
+
 func (s *UserService) DeleteUserPermanently(ctx context.Context, id uuid.UUID) error {
 	return s.repo.PermanentDelete(ctx, id)
 }
